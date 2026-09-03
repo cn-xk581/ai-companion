@@ -1,0 +1,20 @@
+# deploy/aigf.service — systemd 单元模板（由 deploy/start.sh 替换占位符后写入 /etc/systemd/system/）
+# 占位符：__PROJECT_ROOT__ __USER__ __BIND_HOST__ __PORT__
+[Unit]
+Description=AI Girlfriend Agent (FastAPI + LangGraph)
+After=network.target docker.service
+Wants=docker.service
+
+[Service]
+Type=simple
+User=__USER__
+WorkingDirectory=__PROJECT_ROOT__
+EnvironmentFile=__PROJECT_ROOT__/.env
+ExecStart=__PROJECT_ROOT__/.venv/bin/python -m uvicorn app.main:app --host __BIND_HOST__ --port __PORT__
+Restart=always
+RestartSec=3
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

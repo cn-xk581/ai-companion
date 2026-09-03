@@ -1,0 +1,121 @@
+:root {
+  --wx-green: #07c160;
+  --wx-green-dark: #06ad56;
+  --wx-bubble-out: #95ec69;
+  --wx-sidebar-bg: #f7f7f7;
+  --wx-header-bg: #f7f7f7;
+  --wx-border: #e5e5e5;
+  --wx-text: #191919;
+  --wx-text-sub: #8a8a8a;
+  --wx-bg: #ededed;
+  --wx-active: #c8c8c8;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html,
+body,
+#app {
+  height: 100%;
+  width: 100%;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC',
+    'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
+  color: var(--wx-text);
+  background: var(--wx-bg);
+  -webkit-font-smoothing: antialiased;
+  overflow: hidden;
+}
+
+button {
+  font-family: inherit;
+  cursor: pointer;
+  border: none;
+  background: none;
+}
+
+input,
+textarea {
+  font-family: inherit;
+  outline: none;
+}
+
+/* 细滚动条，贴近微信 */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(0, 0, 0, 0.32);
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* 通用圆形头像 */
+.avatar {
+  border-radius: 6px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  font-weight: 600;
+  user-select: none;
+  flex-shrink: 0;
+  overflow: hidden;
+}
+.avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+/* 通用按钮 */
+.btn {
+  border-radius: 6px;
+  padding: 8px 20px;
+  font-size: 14px;
+  transition: opacity 0.15s, background 0.15s;
+}
+.btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.btn-primary {
+  background: var(--wx-green);
+  color: #fff;
+}
+.btn-primary:hover:not(:disabled) {
+  background: var(--wx-green-dark);
+}
+.btn-ghost {
+  background: #f2f2f2;
+  color: #333;
+}
+.btn-ghost:hover:not(:disabled) {
+  background: #e6e6e6;
+}
+.btn-danger {
+  background: #fa5151;
+  color: #fff;
+}
+
+.fade-enter-active,
+.fade-leave-active {
+  transition: opacity 0.18s ease;
+}
+.fade-enter-from,
+.fade-leave-to {
+  opacity: 0;
+}

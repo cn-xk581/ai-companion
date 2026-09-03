@@ -1,0 +1,42 @@
+# 基础设施：PostgreSQL(pgvector) + Redis
+# 用法：docker compose up -d
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: aigf-postgres
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: aigf
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    container_name: aigf-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redisdata:/data
+    command: ["redis-server", "--appendonly", "yes"]
+
+  # 可选：Milvus 向量库（如使用 VECTOR_STORE_BACKEND=milvus）
+  # milvus:
+  #   image: milvusdb/milvus:v2.4.13
+  #   command: ["milvus", "run", "standalone"]
+  #   ports:
+  #     - "19530:19530"
+  #   volumes:
+  #     - milvusdata:/var/lib/milvus
+
+volumes:
+  pgdata:
+  redisdata:
+  # milvusdata:

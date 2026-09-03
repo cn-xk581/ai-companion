@@ -1,0 +1,26 @@
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+dist/
+build/
+.venv/
+venv/
+.env
+*.db
+*.sqlite3
+.pytest_cache/
+.pip-cache/
+.mypy_cache/
+.ruff_cache/
+data/
+logs/
+
+# 前端
+node_modules/
+.npm-cache/
+frontend/dist/
+
+# 部署脚本运行时产物（nohup 降级模式的 pid/日志）
+aigf.pid
+aigf.log
