@@ -13,5 +13,7 @@ from app.memory.extractor import extract_memories
 async def memory_extract_node(state: AgentState, ctx: GraphContext) -> dict:
     if state.reject_reason or not state.agent_reply:
         return {"new_memories": []}
-    memories = await extract_memories(ctx.llm, state.user_input, state.agent_reply)
+    memories = await extract_memories(
+        ctx.llm, state.user_input, state.agent_reply, speaker=state.persona.name
+    )
     return {"new_memories": memories}

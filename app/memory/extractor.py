@@ -13,11 +13,16 @@ logger = logging.getLogger(__name__)
 MIN_IMPORTANCE = 0.1  # 低于该权重直接丢弃
 
 
-async def extract_memories(llm: LLMClient, user_input: str, reply: str) -> list[MemoryItem]:
+async def extract_memories(
+    llm: LLMClient,
+    user_input: str,
+    reply: str,
+    speaker: str = "对方",
+) -> list[MemoryItem]:
     """从本轮 user_input + reply 中抽取长期记忆。解析失败时返回空列表（宁可漏记，不写垃圾）。"""
     try:
         result = await llm.complete(
-            build_extract_messages(user_input, reply),
+            build_extract_messages(user_input, reply, speaker),
             temperature=0.2,
             max_tokens=600,
             response_format={"type": "json_object"},
