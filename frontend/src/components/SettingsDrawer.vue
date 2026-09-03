@@ -71,9 +71,18 @@ async function resetSession() {
   }
 }
 
-onMounted(() => {
+onMounted(async () => {
   loading.value = true
-  Promise.all([loadPersona(), loadMemories()]).finally(() => (loading.value = false))
+  msg.value = ''
+  try {
+    // 新会话（还没发过首条消息）在后端不存在，先幂等创建，否则详情/记忆接口会 404
+    await api.createSession(props.session.session_id)
+    await Promise.all([loadPersona(), loadMemories()])
+  } catch (e) {
+    msg.value = e.message || '加载失败'
+  } finally {
+    loading.value = false
+  }
 })
 </script>
 

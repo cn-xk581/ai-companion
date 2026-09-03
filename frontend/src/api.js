@@ -45,6 +45,8 @@ export const api = {
   me: () => request('/auth/me'),
 
   listSessions: () => request('/session/list'),
+  createSession: (sessionId) =>
+    request('/session/create', { method: 'POST', body: { session_id: sessionId || null } }),
   getSessionDetail: (sessionId) =>
     request(`/session/detail?session_id=${encodeURIComponent(sessionId)}`),
   getHistory: (sessionId, limit = 200) =>

@@ -31,6 +31,10 @@ class SessionResetRequest(BaseModel):
     session_id: str
 
 
+class SessionCreateRequest(BaseModel):
+    session_id: str | None = Field(default=None, max_length=64)
+
+
 class SessionResetResponse(BaseModel):
     session_id: str
     reset: bool = True

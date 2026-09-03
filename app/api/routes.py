@@ -31,6 +31,7 @@ from app.api.schemas import (
     MemoryListResponse,
     PersonaUpdateRequest,
     PersonaUpdateResponse,
+    SessionCreateRequest,
     SessionDetailResponse,
     SessionListItem,
     SessionListResponse,
@@ -165,6 +166,23 @@ async def session_list(request: Request, user: AuthUser = Depends(get_current_us
         reverse=True,
     )
     return SessionListResponse(sessions=items)
+
+
+@router.post("/session/create", response_model=SessionDetailResponse)
+async def session_create(req: SessionCreateRequest, request: Request, user: AuthUser = Depends(get_current_user)):
+    """显式创建会话（幂等）：前端「新会话打开设置」时先调用，避免读/管理接口 404。"""
+    _, manager = _deps(request)
+    try:
+        snap = await manager.create_session(req.session_id, user.user_id)
+    except SessionOwnershipError as exc:
+        raise HTTPException(status_code=403, detail=str(exc))
+    return SessionDetailResponse(
+        session_id=snap.session_id,
+        persona=snap.persona,
+        relationship_stage=snap.relationship_stage.value,
+        relationship_score=snap.relationship_score,
+        mood=snap.mood,
+    )
 
 
 @router.get("/session/detail", response_model=SessionDetailResponse)

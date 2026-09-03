@@ -65,6 +65,32 @@ async def test_list_sessions_carries_persona_and_mood():
     assert s.mood.current_mood in ("happy", "neutral", "sad", "angry", "shy", "excited", "tired")
 
 
+async def test_create_session_idempotent_and_enables_settings():
+    """/session/create：幂等创建；创建后读/管理接口立即可用；越权仍拒绝。"""
+    ctx, _ = make_ctx()
+    manager = SessionManager(ctx)
+
+    snap = await manager.create_session("fresh", "u1")
+    assert snap.user_id == "u1"
+    assert snap.persona.name == "小柔"
+
+    # 幂等：重复 create 返回同一会话
+    snap2 = await manager.create_session("fresh", "u1")
+    assert snap2.session_id == "fresh"
+
+    # 创建后，详情 / 记忆 / 人设更新 均可用（不再 404）
+    detail = await manager.get_snapshot("fresh", "u1")
+    assert detail.session_id == "fresh"
+    assert await manager.list_memories("fresh", "u1") == []
+    await manager.update_persona("fresh", Persona(name="测试改名"), "u1")
+    assert (await manager.get_snapshot("fresh", "u1")).persona.name == "测试改名"
+
+    # 他人已创建的会话，本人 create 视为越权
+    await manager.create_session("theirs", "u2")
+    with pytest.raises(SessionOwnershipError):
+        await manager.create_session("theirs", "u1")
+
+
 async def test_read_ops_do_not_auto_create_session():
     """读/管理类操作遇到不存在的 session 应 404，而非悄悄创建垃圾会话。"""
     ctx, _ = make_ctx()

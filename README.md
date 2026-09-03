@@ -231,6 +231,7 @@ curl -X POST http://127.0.0.1:8000/api/v1/chat \
 | POST | `/api/v1/auth/login` | 登录：`{username, password}` → JWT |
 | GET | `/api/v1/auth/me` | 当前用户信息 |
 | GET | `/api/v1/session/list` | 我的会话列表（含昵称/最后消息/关系/情绪，供前端会话列表） |
+| POST | `/api/v1/session/create` | 显式创建会话（幂等；新会话「打开设置」前先调用，避免详情/记忆 404） |
 | GET | `/api/v1/session/detail?session_id=` | 会话详情（完整人设 + 关系 + 情绪） |
 | GET | `/api/v1/session/history?session_id=&limit=` | 会话聊天历史（前端加载过往消息） |
 | POST | `/api/v1/chat` | 聊天（一次性返回）：`{session_id?, user_input}` |

@@ -188,6 +188,16 @@ class SessionManager:
 
     # ---------------- 会话 ----------------
 
+    async def create_session(self, session_id: str | None, user_id: str) -> SessionSnapshot:
+        """显式创建会话（幂等，供前端「先建会话再设置人设/记忆」）。
+
+        - session 已存在且属于本人 -> 直接返回（不重复创建）
+        - session 已存在但不属于本人 -> SessionOwnershipError
+        - 不存在 -> 以默认人设创建并绑定本人
+        """
+        session_id = session_id or uuid.uuid4().hex
+        return await self._load_snapshot(session_id, user_id, create=True)
+
     async def reset_session(self, session_id: str, user_id: str) -> None:
         await self._require_owner(session_id, user_id)
         # 先清向量库（独立于关系库），再清关系库与缓存
