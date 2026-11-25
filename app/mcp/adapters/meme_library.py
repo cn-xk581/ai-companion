@@ -12,7 +12,7 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
-from app.core.errors import NotFoundError, ValidationFailed
+from app.core.errors import BusinessRuleViolation, NotFoundError
 from app.mcp.models import MCPAdapter, ToolSpec
 
 logger = logging.getLogger(__name__)
@@ -50,7 +50,10 @@ class MemeAdapter(MCPAdapter):
     async def start(self) -> None:
         path = self._dir / "memes.json"
         if not path.exists():
-            raise ValidationFailed(f"表情包数据集缺失：{path}")
+            # 可选能力：数据集缺失只降级，不让整个服务起不来
+            logger.warning("[mcp:meme] 数据集缺失，表情库降级为不可用：%s", path)
+            self._items = []
+            return
         raw = json.loads(path.read_text(encoding="utf-8"))
         self._items = [MemeItem.model_validate(item) for item in raw.get("memes", [])]
         logger.info("[mcp:meme] 已加载 %d 条表情", len(self._items))
@@ -74,6 +77,8 @@ class MemeAdapter(MCPAdapter):
         if tool != "meme.pick":
             raise NotFoundError(f"meme_library 不支持工具 {tool}")
         payload = MemePickInput.model_validate(args)
+        if not self._items:
+            raise BusinessRuleViolation("表情库未启用：数据集缺失（app/mcp/data/memes.json）")
         tags = {t.lower() for t in payload.tags if t}
         candidates = [
             m for m in self._items if tags and tags & {t.lower() for t in m.tags}

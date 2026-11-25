@@ -1,0 +1,22 @@
+{
+  "version": "1.0",
+  "note": "表情包目录：文本 + emoji 形式，避免额外静态资源；生产可换成图片 CDN URL。",
+  "memes": [
+    {"id": "m_comfort_1", "emoji": "🫂", "caption": "抱一下，不说话也行", "tags": ["comfort", "sad"]},
+    {"id": "m_comfort_2", "emoji": "🍵", "caption": "先喝口热的，慢慢说", "tags": ["comfort", "tired"]},
+    {"id": "m_comfort_3", "emoji": "🌙", "caption": "今天累了就早点睡，我守着", "tags": ["comfort", "goodnight"]},
+    {"id": "m_cheer_1", "emoji": "✨", "caption": "你今天已经很好了", "tags": ["cheer", "sad", "tired"]},
+    {"id": "m_cheer_2", "emoji": "🎉", "caption": "这也值得庆祝一下吧", "tags": ["cheer", "happy", "excited"]},
+    {"id": "m_shy_1", "emoji": "😳", "caption": "别、别这么突然说这种话", "tags": ["shy"]},
+    {"id": "m_shy_2", "emoji": "🫣", "caption": "耳朵有点热…", "tags": ["shy", "crush"]},
+    {"id": "m_angry_1", "emoji": "😤", "caption": "哼，我记着了", "tags": ["angry"]},
+    {"id": "m_angry_2", "emoji": "🙄", "caption": "行吧行吧，你说了算", "tags": ["angry", "tease"]},
+    {"id": "m_miss_1", "emoji": "💭", "caption": "刚才还想着你会不会来", "tags": ["miss", "love"]},
+    {"id": "m_miss_2", "emoji": "🫶", "caption": "过来，让我看看你", "tags": ["miss", "love", "couple"]},
+    {"id": "m_goodnight_1", "emoji": "😴", "caption": "晚安，做个好梦", "tags": ["goodnight"]},
+    {"id": "m_goodnight_2", "emoji": "⭐", "caption": "关灯了，明天见", "tags": ["goodnight", "couple"]},
+    {"id": "m_tease_1", "emoji": "😏", "caption": "哦？继续说，我听着", "tags": ["tease", "crush"]},
+    {"id": "m_hungry_1", "emoji": "🍜", "caption": "你又不吃饭了是不是", "tags": ["care", "hungry"]},
+    {"id": "m_rain_1", "emoji": "🌧️", "caption": "下雨了，记得带伞", "tags": ["care", "weather"]}
+  ]
+}

@@ -13,8 +13,8 @@ venv/
 .pip-cache/
 .mypy_cache/
 .ruff_cache/
-data/
-logs/
+/data/
+/logs/
 
 # 前端
 node_modules/
