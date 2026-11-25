@@ -58,12 +58,14 @@ sudo bash deploy/install.sh --skip-embed --llm-key sk-xxx
 | 2 | 创建 system 用户（不存在时） | `companion` |
 | 3 | 拷贝代码（排除 `.git/.venv/node_modules/dist/data/.env`） | `/opt/companion` |
 | 4 | 生成 `.env`（JWT/ADMIN/PG 密码自动生成；旧值保留并备份） | `/opt/companion/.env`（640 root:group） |
-| 5 | 起 PG(pgvector) + Redis，端口只绑 127.0.0.1 | 容器 `companion-postgres-1` / `companion-redis-1` |
-| 6 | 建 venv 装依赖（含 embed 扩展） | `/opt/companion/.venv` |
-| 7 | 构建前端并清理 `node_modules` | `/opt/companion/frontend/dist` |
+| 5 | 建 venv 装依赖（含 embed 扩展） | `/opt/companion/.venv` |
+| 6 | 构建前端并清理 `node_modules` | `/opt/companion/frontend/dist` |
+| 7 | 拉镜像并起 PG(pgvector) + Redis（拉取失败重试 3 次），端口只绑 127.0.0.1 | 容器 `companion-postgres-1` / `companion-redis-1` |
 | 8 | 写 systemd 单元（加固、Failing 自动重启） | `/etc/systemd/system/companion.service` |
 | 9 | 可选：写 nginx 站点并 reload | `/etc/nginx/sites-available/companion.conf` |
 | 10 | 健康检查 + 写安装清单 | `/var/lib/companion/install-manifest.env` |
+> **顺序原则**：先下载完所有依赖（Python、npm、Docker 镜像），再启动容器与服务；任何下载失败都停在动系统之前。国内网络拉不动镜像时加 `--registry-mirror https://docker.m.daocloud.io`。
+
 
 **资源命名是确定的**（便于审计与彻底回收）：
 
@@ -229,7 +231,8 @@ docker compose -p aigf down -v            # 旧项目名是 aigf
 - systemd：`ProtectSystem=strict`、`ProtectHome=true`、`NoNewPrivileges`，只开放 `data/` 与状态目录可写；
 - `.env` 640 `root:group`，密钥不进代码、不进镜像；
 - 运维接口需 `X-Admin-Token`（安装时自动生成，`sudo grep ADMIN_TOKEN /opt/companion/.env`）；
-- 卸载默认删除数据卷并二次确认（输入安装目录），预演模式零副作用。
+- 卸载默认删除数据卷并二次确认（输入安装目录），预演模式零副作用；
+- `--registry-mirror` 写入的 `/etc/docker/daemon.json` 属于机器级设置，**卸载不回收**（会影响同机其他容器），需要时手工删。
 ---
 
 ## 10. 接入已有 nginx（服务器上已经有站点）

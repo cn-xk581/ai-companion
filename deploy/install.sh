@@ -36,6 +36,7 @@ LLM_MODEL="${LLM_MODEL:-deepseek-chat}"
 PIP_INDEX="https://pypi.tuna.tsinghua.edu.cn/simple"
 NPM_REGISTRY="https://registry.npmmirror.com"
 WITH_EMBED=1
+REGISTRY_MIRROR=""
 WITH_DOCKER=1
 WITH_NGINX=1
 WITH_FRONTEND=1
@@ -59,6 +60,7 @@ usage() {
   --llm-model NAME    模型名（默认 deepseek-chat）
   --pip-index URL     pip 源（默认清华镜像）
   --npm-registry URL  npm 源（默认 npmmirror）
+  --registry-mirror URL  配置 Docker registry 镜像（写入 /etc/docker/daemon.json 并重启 docker）
   --skip-embed        不装 sentence-transformers，改用 hash 嵌入 + dev 模式（仅联调用）
   --no-docker         不启动内置 PG/Redis（需自备 DATABASE_URL / REDIS_URL）
   --no-frontend       跳过前端构建（沿用已有 frontend/dist）
@@ -94,6 +96,7 @@ while [[ $# -gt 0 ]]; do
     --no-docker) WITH_DOCKER=0; shift ;;
     --no-frontend) WITH_FRONTEND=0; shift ;;
     --no-nginx) WITH_NGINX=0; shift ;;
+    --registry-mirror) REGISTRY_MIRROR="$2"; shift 2 ;;
     --pg-port) PG_PORT="$2"; shift 2 ;;
     --redis-port) REDIS_PORT="$2"; shift 2 ;;
     --upgrade) UPGRADE=1; shift ;;
@@ -139,6 +142,36 @@ if [[ -f "$MANIFEST" ]]; then
   LOG_FILE="${STATE_DIR}/deploy.log"
   warn "升级模式：沿用清单中的参数（prefix=$PREFIX port=$PORT domain=${DOMAIN:-无}），本次传入的参数仅 --llm-* 生效"
 fi
+
+# ---------- Docker 镜像加速（可选，--registry-mirror）----------
+configure_docker_mirror() {
+  local url="$1" cfg="/etc/docker/daemon.json"
+  if [[ "$DRY_RUN" == "1" ]]; then
+    printf '  %s 合并 registry-mirrors=%s 到 %s 并重启 docker\n' \
+      "${C_YELLOW}[dry-run]${C_RESET}" "$url" "$cfg" >&2
+    return 0
+  fi
+  mkdir -p /etc/docker
+  "$PYTHON_BIN" - "$cfg" "$url" <<'PY'
+import json, os, sys
+path, url = sys.argv[1], sys.argv[2]
+data = {}
+if os.path.exists(path):
+    try:
+        with open(path, encoding="utf-8") as fh:
+            data = json.load(fh)
+    except Exception:
+        data = {}
+mirrors = [m for m in data.get("registry-mirrors", []) if m != url]
+mirrors.insert(0, url)
+data["registry-mirrors"] = mirrors
+with open(path, "w", encoding="utf-8") as fh:
+    json.dump(data, fh, indent=2, ensure_ascii=False)
+PY
+  systemctl restart docker
+  docker info >/dev/null 2>&1 || die "配置镜像加速后 docker 不可用，检查 $cfg"
+  ok "已配置 Docker 镜像加速：$url"
+}
 
 # ---------- 前置检查 ----------
 section "1/9 前置检查"
@@ -195,6 +228,13 @@ if [[ "$WITH_NGINX" == "1" ]] && ! command_exists nginx; then
 fi
 if [[ "$DRY_RUN" != "1" ]] && port_in_use "$PORT"; then
   die "端口 $PORT 已被占用（ss -ltnp | grep :$PORT）"
+fi
+if [[ -n "$REGISTRY_MIRROR" ]]; then
+  if [[ "$WITH_DOCKER" == "1" ]]; then
+    configure_docker_mirror "$REGISTRY_MIRROR"
+  else
+    warn "--registry-mirror 已忽略：--no-docker 不使用容器"
+  fi
 fi
 ok "前置检查通过"
 
@@ -314,31 +354,8 @@ if [[ "$DRY_RUN" != "1" ]]; then
 fi
 ok ".env 已写入（root:$GROUP 640）"
 
-# ---------- 基础设施 ----------
-section "5/9 基础设施（postgres + redis）"
-if [[ "$WITH_DOCKER" == "1" ]]; then
-  if [[ "$DRY_RUN" == "1" ]]; then
-    printf '  %s %s up -d --remove-orphans\n' "${C_YELLOW}[dry-run]${C_RESET}" "$(compose_cmd)" >&2
-  else
-    run_shell "$(compose_cmd) up -d --remove-orphans"
-    log "等待 Postgres 就绪…"
-    ready=0
-    for _ in $(seq 1 60); do
-      if docker compose -p "$COMPOSE_PROJECT" --env-file "$ENV_FILE" -f "$COMPOSE_FILE" \
-           exec -T postgres pg_isready -U "$PG_USER" -d "$PG_DB" >/dev/null 2>&1; then
-        ready=1; break
-      fi
-      sleep 2
-    done
-    [[ "$ready" == "1" ]] || die "Postgres 120s 内未就绪：docker compose -p $COMPOSE_PROJECT logs postgres"
-    ok "Postgres 就绪"
-  fi
-else
-  info "--no-docker：跳过容器基础设施"
-fi
-
 # ---------- Python ----------
-section "6/9 Python 环境（venv + 依赖）"
+section "5/9 Python 环境（venv + 依赖）"
 if [[ "$DRY_RUN" == "1" ]]; then
   printf '  %s %s -m venv %s/.venv && pip install -e "%s%s"\n' \
     "${C_YELLOW}[dry-run]${C_RESET}" "$PYTHON_BIN" "$PREFIX" "$PREFIX" "$([[ $WITH_EMBED == 1 ]] && echo '[embed]')" >&2
@@ -353,7 +370,7 @@ else
 fi
 
 # ---------- 前端 ----------
-section "7/9 前端构建"
+section "6/9 前端构建"
 if [[ "$WITH_FRONTEND" == "1" ]]; then
   if [[ "$DRY_RUN" == "1" ]]; then
     printf '  %s cd %s/frontend && npm ci && npm run build && rm -rf node_modules\n' "${C_YELLOW}[dry-run]${C_RESET}" "$PREFIX" >&2
@@ -372,6 +389,37 @@ if [[ "$WITH_FRONTEND" == "1" ]]; then
   fi
 else
   [[ -f "$PREFIX/frontend/dist/index.html" ]] || warn "--no-frontend 但 dist 不存在：GET / 会返回接口索引"
+fi
+
+# ---------- 基础设施 ----------
+section "7/9 基础设施（postgres + redis）"
+if [[ "$WITH_DOCKER" == "1" ]]; then
+  if [[ "$DRY_RUN" == "1" ]]; then
+    printf '  %s %s pull（先拉镜像，失败重试 3 次）\n' "${C_YELLOW}[dry-run]${C_RESET}" "$(compose_cmd)" >&2
+    printf '  %s %s up -d --remove-orphans\n' "${C_YELLOW}[dry-run]${C_RESET}" "$(compose_cmd)" >&2
+  else
+    pulled=0
+    for attempt in 1 2 3; do
+      if run_shell "$(compose_cmd) pull"; then pulled=1; break; fi
+      warn "镜像拉取失败（第 $attempt/3 次），15 秒后重试…"
+      sleep 15
+    done
+    [[ "$pulled" == "1" ]] || die "镜像拉取失败：国内网络请加 --registry-mirror https://docker.m.daocloud.io 后重跑"
+    run_shell "$(compose_cmd) up -d --remove-orphans"
+    log "等待 Postgres 就绪…"
+    ready=0
+    for _ in $(seq 1 60); do
+      if docker compose -p "$COMPOSE_PROJECT" --env-file "$ENV_FILE" -f "$COMPOSE_FILE" \
+           exec -T postgres pg_isready -U "$PG_USER" -d "$PG_DB" >/dev/null 2>&1; then
+        ready=1; break
+      fi
+      sleep 2
+    done
+    [[ "$ready" == "1" ]] || die "Postgres 120s 内未就绪：docker compose -p $COMPOSE_PROJECT logs postgres"
+    ok "Postgres 就绪"
+  fi
+else
+  info "--no-docker：跳过容器基础设施"
 fi
 
 # ---------- systemd ----------
