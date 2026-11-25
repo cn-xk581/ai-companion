@@ -10,9 +10,7 @@ from app.auth.security import (
     hash_password,
     verify_password,
 )
-from app.services.session_manager import SessionManager, SessionOwnershipError
 from app.storage.postgres import DuplicateUserError, InMemoryRepository
-from tests.conftest import make_ctx
 
 
 def test_password_hash_roundtrip():
@@ -46,21 +44,27 @@ async def test_user_repo_register_duplicate():
 
 
 async def test_session_ownership_isolation():
-    """session 强绑定用户：越权访问必须被拒绝。"""
-    ctx, _ = make_ctx()
-    manager = SessionManager(ctx)
+    """会话强绑定用户：越权访问必须被拒绝。"""
+    from langgraph.checkpoint.memory import InMemorySaver
 
-    # u1 创建 session s1
-    await manager.chat("s1", "你好呀", "u1")
+    from app.graph.builder import build_graph
+    from app.services.chat_service import ChatService, SessionOwnershipError
+    from tests.conftest import make_ctx
 
-    # u2 尝试访问 s1 -> 拒绝
+    ctx = await make_ctx()
+    graph = build_graph(ctx, InMemorySaver())
+    service = ChatService(ctx, graph, {"backend": "memory"})
+
+    session = await service.create_session("s1", "u1")
+    await service.chat(session_id=session.session_id, user_id="u1", user_input="你好呀")
+
     with pytest.raises(SessionOwnershipError):
-        await manager.chat("s1", "在吗", "u2")
+        await service.require_session("s1", "u2")
     with pytest.raises(SessionOwnershipError):
-        await manager.list_memories("s1", "u2")
+        await service.create_session("s1", "u2")
     with pytest.raises(SessionOwnershipError):
-        await manager.reset_session("s1", "u2")
+        await service.list_memories("u2", session_id="s1")
 
     # 本人可正常访问
-    await manager.chat("s1", "再来一句", "u1")
-    assert await manager.list_memories("s1", "u1") is not None
+    record = await service.require_session("s1", "u1")
+    assert record.user_id == "u1"

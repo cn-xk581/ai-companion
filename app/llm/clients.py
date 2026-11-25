@@ -102,3 +102,29 @@ class OpenAILLMClient(LLMClient):
             return ImageResult(url=resp.data[0].url)
         except Exception as exc:  # noqa: BLE001
             return ImageResult(error=str(exc))
+
+
+class UnavailableLLM(LLMClient):
+    """未配置 LLM_API_KEY 时的占位实现。
+
+    工程取舍：**不让服务起不来**。缺 key 时对话会：
+    1) plan 节点收到 TransientError → 不调工具，按纯聊天继续；
+    2) respond 节点流式失败 → 用兜底话术回复（再经 reply.polish 润色）；
+    这样健康检查、Skill 运维、提醒/记忆链路仍然可用，便于灰度与联调。
+    """
+
+    model = "unavailable"
+
+    async def complete(self, *args, **kwargs) -> LLMResult:  # noqa: D401
+        from app.core.errors import TransientError
+
+        raise TransientError("LLM 未配置：请设置 LLM_API_KEY")
+
+    async def stream(self, *args, **kwargs):
+        from app.core.errors import TransientError
+
+        raise TransientError("LLM 未配置：请设置 LLM_API_KEY")
+        yield ""  # pragma: no cover
+
+    async def generate_image(self, prompt: str, style: str | None = None) -> ImageResult:
+        return ImageResult(error="LLM 未配置")

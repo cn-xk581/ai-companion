@@ -4,7 +4,7 @@ import { login, register } from '../store/auth'
 
 const emit = defineEmits(['authed'])
 
-const mode = ref('login') // login | register
+const mode = ref('login')
 const username = ref('')
 const password = ref('')
 const confirm = ref('')
@@ -29,11 +29,8 @@ async function submit() {
   }
   loading.value = true
   try {
-    if (mode.value === 'login') {
-      await login(username.value, password.value)
-    } else {
-      await register(username.value, password.value)
-    }
+    if (mode.value === 'login') await login(username.value, password.value)
+    else await register(username.value, password.value)
     emit('authed')
   } catch (e) {
     error.value = e.message || '操作失败'
@@ -50,155 +47,229 @@ function switchMode() {
 </script>
 
 <template>
-  <div class="login-wrap">
-    <div class="login-card">
-      <div class="brand">
-        <div class="brand-logo">柔</div>
-        <h1>小柔 · AI 女友</h1>
-        <p>像微信一样，随时陪在你身边</p>
+  <div class="gate">
+    <section class="word">
+      <p class="mark serif">小柔</p>
+      <p class="quote serif">「你回来啦。<br />今天想从哪儿说起？」</p>
+      <p class="explain">
+        她记得你说过的事，关系会从陌生一点点往前走。
+        想改她的性格、说话方式或者禁区，进去以后在左下角「设置」里都能改。
+      </p>
+    </section>
+
+    <section class="enter">
+      <div class="enter-inner">
+        <div class="modes" role="tablist">
+          <button
+            class="mode"
+            :class="{ 'is-on': mode === 'login' }"
+            role="tab"
+            :aria-selected="mode === 'login'"
+            @click="mode = 'login'; error = ''"
+          >
+            登录
+          </button>
+          <button
+            class="mode"
+            :class="{ 'is-on': mode === 'register' }"
+            role="tab"
+            :aria-selected="mode === 'register'"
+            @click="mode = 'register'; error = ''"
+          >
+            注册
+          </button>
+        </div>
+
+        <form class="form" @submit.prevent="submit">
+          <label class="row">
+            <span class="field-label">用户名</span>
+            <input
+              v-model="username"
+              class="field"
+              placeholder="3–32 位字母、数字或下划线"
+              autocomplete="username"
+            />
+          </label>
+
+          <label class="row">
+            <span class="field-label">密码</span>
+            <input
+              v-model="password"
+              class="field"
+              type="password"
+              :placeholder="mode === 'register' ? '至少 6 位' : '你的密码'"
+              :autocomplete="mode === 'login' ? 'current-password' : 'new-password'"
+            />
+          </label>
+
+          <label v-if="mode === 'register'" class="row">
+            <span class="field-label">再输一次</span>
+            <input
+              v-model="confirm"
+              class="field"
+              type="password"
+              placeholder="确认密码"
+              autocomplete="new-password"
+            />
+          </label>
+
+          <p v-if="error" class="error">{{ error }}</p>
+
+          <button class="btn btn--primary btn--full go" type="submit" :disabled="loading">
+            {{ loading ? '稍等…' : mode === 'login' ? '进去' : '注册并进去' }}
+          </button>
+
+          <button class="flip" type="button" @click="switchMode">
+            {{ mode === 'login' ? '第一次来？注册一个' : '已经有账号，去登录' }}
+          </button>
+        </form>
       </div>
-
-      <div class="tabs">
-        <button :class="{ active: mode === 'login' }" @click="mode = 'login'; error = ''">登录</button>
-        <button :class="{ active: mode === 'register' }" @click="mode = 'register'; error = ''">注册</button>
-      </div>
-
-      <div class="form">
-        <input
-          v-model="username"
-          class="field"
-          placeholder="用户名（3-32 位字母数字下划线）"
-          autocomplete="username"
-          @keyup.enter="submit"
-        />
-        <input
-          v-model="password"
-          class="field"
-          type="password"
-          placeholder="密码"
-          autocomplete="current-password"
-          @keyup.enter="submit"
-        />
-        <input
-          v-if="mode === 'register'"
-          v-model="confirm"
-          class="field"
-          type="password"
-          placeholder="确认密码"
-          autocomplete="new-password"
-          @keyup.enter="submit"
-        />
-
-        <p v-if="error" class="error">{{ error }}</p>
-
-        <button class="btn btn-primary submit" :disabled="loading" @click="submit">
-          {{ loading ? '请稍候…' : mode === 'login' ? '登录' : '注册并进入' }}
-        </button>
-
-        <button class="switch" @click="switchMode">
-          {{ mode === 'login' ? '还没有账号？去注册' : '已有账号？去登录' }}
-        </button>
-      </div>
-    </div>
+    </section>
   </div>
 </template>
 
 <style scoped>
-.login-wrap {
+.gate {
+  display: grid;
+  grid-template-columns: 1.1fr 0.9fr;
   height: 100%;
+  background: var(--bg);
+}
+.word {
   display: flex;
-  align-items: center;
-  justify-content: center;
-  background: linear-gradient(160deg, #07c160 0%, #0e9f57 45%, #075e4a 100%);
+  flex-direction: column;
+  justify-content: flex-end;
+  gap: 20px;
+  padding: clamp(32px, 6vw, 72px);
+  padding-bottom: clamp(48px, 11vh, 108px);
+  background: var(--panel);
+  border-right: 1px solid var(--line);
+  background-image: repeating-linear-gradient(
+    to bottom,
+    var(--grain) 0,
+    var(--grain) 1px,
+    transparent 1px,
+    transparent 34px
+  );
 }
-.login-card {
-  width: 360px;
-  background: #fff;
-  border-radius: 12px;
-  padding: 36px 32px 28px;
-  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.25);
+.mark {
+  font-size: clamp(40px, 4.6vw, 60px);
+  line-height: 1;
+  letter-spacing: 0.04em;
+  color: var(--text);
+  animation: rise 0.9s var(--ease) both;
 }
-.brand {
-  text-align: center;
-  margin-bottom: 24px;
+@keyframes rise {
+  from {
+    opacity: 0;
+    filter: blur(7px);
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    filter: blur(0);
+    transform: none;
+  }
 }
-.brand-logo {
-  width: 64px;
-  height: 64px;
-  margin: 0 auto 12px;
-  border-radius: 14px;
-  background: var(--wx-green);
-  color: #fff;
-  font-size: 34px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  box-shadow: 0 8px 20px rgba(7, 193, 96, 0.4);
+.quote {
+  max-width: 21em;
+  font-size: clamp(17px, 1.45vw, 21px);
+  line-height: 1.85;
+  color: var(--text);
+  opacity: 0.92;
+  animation: rise 0.9s var(--ease) 0.12s both;
 }
-.brand h1 {
-  font-size: 20px;
-  margin-bottom: 6px;
+.explain {
+  max-width: 24em;
+  padding-top: 16px;
+  font-size: var(--step-0);
+  line-height: 1.9;
+  color: var(--text-3);
+  animation: rise 0.9s var(--ease) 0.22s both;
 }
-.brand p {
-  color: var(--wx-text-sub);
-  font-size: 13px;
-}
-.tabs {
-  display: flex;
-  border-bottom: 1px solid var(--wx-border);
-  margin-bottom: 20px;
-}
-.tabs button {
-  flex: 1;
-  padding: 10px 0;
-  font-size: 15px;
-  color: var(--wx-text-sub);
-  position: relative;
-}
-.tabs button.active {
-  color: var(--wx-green);
-  font-weight: 600;
-}
-.tabs button.active::after {
+.explain::before {
   content: '';
-  position: absolute;
-  left: 30%;
-  right: 30%;
-  bottom: -1px;
-  height: 2px;
-  background: var(--wx-green);
-}
-.field {
-  width: 100%;
-  padding: 12px 14px;
-  border: 1px solid var(--wx-border);
-  border-radius: 8px;
-  font-size: 14px;
+  display: block;
+  width: 52px;
+  height: 1px;
   margin-bottom: 14px;
-  transition: border-color 0.15s;
+  background: var(--line);
 }
-.field:focus {
-  border-color: var(--wx-green);
+.enter {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: clamp(24px, 5vw, 56px);
+}
+.enter-inner {
+  width: 100%;
+  max-width: 320px;
+}
+.modes {
+  display: flex;
+  gap: 20px;
+  margin-bottom: 22px;
+  border-bottom: 1px solid var(--line);
+}
+.mode {
+  padding: 0 0 9px;
+  margin-bottom: -1px;
+  font-size: var(--step-1);
+  color: var(--text-3);
+  border-bottom: 1px solid transparent;
+}
+.mode:hover {
+  color: var(--text-2);
+}
+.mode.is-on {
+  color: var(--text);
+  border-bottom-color: var(--accent);
+}
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.row {
+  display: block;
 }
 .error {
-  color: #fa5151;
-  font-size: 13px;
-  margin: -6px 0 10px;
+  font-size: var(--step-0);
+  color: var(--bad);
 }
-.submit {
-  width: 100%;
-  padding: 12px;
-  font-size: 16px;
-  border-radius: 8px;
+.go {
   margin-top: 4px;
+  height: 42px;
 }
-.switch {
-  width: 100%;
-  margin-top: 14px;
-  color: var(--wx-text-sub);
-  font-size: 13px;
+.flip {
+  align-self: center;
+  margin-top: 2px;
+  font-size: var(--step-0);
+  color: var(--text-3);
 }
-.switch:hover {
-  color: var(--wx-green);
+.flip:hover {
+  color: var(--text);
+}
+@media (max-width: 820px) {
+  .gate {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto 1fr;
+    overflow-y: auto;
+  }
+  .word {
+    gap: 16px;
+    padding: 34px 26px 26px;
+    border-right: 0;
+    border-bottom: 1px solid var(--line);
+  }
+  .mark {
+    font-size: 38px;
+  }
+  .quote {
+    font-size: 16px;
+  }
+  .enter {
+    padding: 28px 26px 44px;
+  }
 }
 </style>

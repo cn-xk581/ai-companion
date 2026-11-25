@@ -1,13 +1,17 @@
 import { reactive } from 'vue'
 import { api, setToken, clearToken } from '../api'
+import { readItem, writeItem, removeItem } from '../storage'
+
+const TOKEN_KEY = 'companion_token'
+const USER_KEY = 'companion_user'
 
 export const auth = reactive({
-  token: localStorage.getItem('aigf_token') || '',
+  token: readItem(TOKEN_KEY) || '',
   user: null,
 })
 
 try {
-  auth.user = JSON.parse(localStorage.getItem('aigf_user') || 'null')
+  auth.user = JSON.parse(readItem(USER_KEY) || 'null')
 } catch {
   auth.user = null
 }
@@ -18,7 +22,7 @@ function persist(res) {
   auth.token = res.access_token
   auth.user = { user_id: res.user_id, username: res.username }
   setToken(res.access_token)
-  localStorage.setItem('aigf_user', JSON.stringify(auth.user))
+  writeItem(USER_KEY, JSON.stringify(auth.user))
 }
 
 export async function login(username, password) {
@@ -35,5 +39,5 @@ export function logout() {
   auth.token = ''
   auth.user = null
   clearToken()
-  localStorage.removeItem('aigf_user')
+  removeItem(USER_KEY)
 }

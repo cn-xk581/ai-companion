@@ -1,10 +1,36 @@
 <!doctype html>
-<html lang="zh-CN">
+<html lang="zh-CN" data-theme="night">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="theme-color" content="#07c160" />
-    <title>小柔 · AI 女友</title>
+    <meta name="theme-color" content="#10141c" />
+    <title>小柔 · AI 伴侣</title>
+    <script>
+      // 在首帧之前定好配色，避免暗色主题闪一下白
+      ;(function () {
+        try {
+          // 新键优先；旧键 aigf-theme 读一次就迁移过去
+          var saved = localStorage.getItem('companion_theme')
+          if (saved !== 'day' && saved !== 'night') {
+            var legacy = localStorage.getItem('aigf-theme')
+            if (legacy === 'day' || legacy === 'night') {
+              saved = legacy
+              localStorage.setItem('companion_theme', legacy)
+              localStorage.removeItem('aigf-theme')
+            }
+          }
+          var id = saved === 'day' || saved === 'night' ? saved : ''
+          if (!id) {
+            id = window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches
+              ? 'day'
+              : 'night'
+          }
+          document.documentElement.dataset.theme = id
+        } catch (e) {
+          document.documentElement.dataset.theme = 'night'
+        }
+      })()
+    </script>
   </head>
   <body>
     <div id="app"></div>

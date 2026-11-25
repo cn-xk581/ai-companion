@@ -1,15 +1,18 @@
 <script setup>
-import { nextTick, onUnmounted, ref, watch } from 'vue'
-import Avatar from './Avatar.vue'
+import { computed, nextTick, onUnmounted, ref, watch } from 'vue'
 import MessageBubble from './MessageBubble.vue'
+import ReviewGate from './ReviewGate.vue'
 import { api, streamChat } from '../api'
-import { STAGE_LABELS, MOOD_LABELS, MOOD_EMOJI, EMOJIS } from '../constants'
+import { EMOJIS, moodEmoji, moodLabel, stagePhrase } from '../constants'
 import { uuid } from '../utils'
 
 const props = defineProps({
-  session: { type: Object, required: true },
+  sessionId: { type: String, required: true },
+  detail: { type: Object, default: null },
+  name: { type: String, default: '小柔' },
+  avatar: { type: String, default: '' },
 })
-const emit = defineEmits(['sent', 'open-settings'])
+const emit = defineEmits(['sent', 'trace', 'back'])
 
 const messages = ref([])
 const input = ref('')
@@ -17,38 +20,37 @@ const streaming = ref(false)
 const loading = ref(false)
 const showEmoji = ref(false)
 const listEl = ref(null)
+const inputEl = ref(null)
+const review = ref(null)
+const reviewing = ref(false)
+const lastTurnId = ref('')
+const error = ref('')
 
-const meta = ref({
-  relationship_stage: props.session.relationship_stage || 'stranger',
-  relationship_score: props.session.relationship_score || 0,
-  mood: props.session.mood || 'neutral',
-  mood_intensity: props.session.mood_intensity ?? 0.5,
-})
+let streamCtrl = null
 
-let streamCtrl = null // 当前流式请求的 AbortController
+const visibleMessages = computed(() => messages.value.filter((m) => m.role === 'user' || (m.content && m.content.trim())))
 
-const stageLabel = () => STAGE_LABELS[meta.value.relationship_stage] || meta.value.relationship_stage
-const moodLabel = () => MOOD_LABELS[meta.value.mood] || meta.value.mood
-const moodEmoji = () => MOOD_EMOJI[meta.value.mood] || '😐'
+const stage = computed(() => props.detail?.stage || 'stranger')
+const mood = computed(() => props.detail?.mood?.current_mood || 'neutral')
+const score = computed(() => Math.round(props.detail?.score || 0))
 
 async function loadHistory() {
-  const sid = props.session.session_id
-  messages.value = []
-  if (props.session.pending) return
   loading.value = true
+  error.value = ''
+  messages.value = []
+  review.value = null
   try {
-    const res = await api.getHistory(sid)
-    if (props.session.session_id !== sid) return // 加载期间已切换会话：丢弃过期响应
+    const res = await api.getHistory(props.sessionId)
     messages.value = (res.messages || []).map((m) => ({
       role: m.role,
       content: m.content || '',
       timestamp: m.timestamp || '',
     }))
     await scrollToBottom()
-  } catch {
-    // 历史加载失败不阻塞聊天
+  } catch (e) {
+    error.value = e.message || '读取历史失败'
   } finally {
-    if (props.session.session_id === sid) loading.value = false
+    loading.value = false
   }
 }
 
@@ -57,76 +59,95 @@ async function scrollToBottom() {
   if (listEl.value) listEl.value.scrollTop = listEl.value.scrollHeight
 }
 
-function startStream(assistant, text, clientMsgId) {
-  streamCtrl = streamChat(props.session.session_id, text, {
+async function resetInputHeight() {
+  await nextTick()
+  if (inputEl.value) inputEl.value.style.height = 'auto'
+}
+
+function autosize(ev) {
+  const el = ev.target
+  el.style.height = 'auto'
+  el.style.height = Math.min(el.scrollHeight, 132) + 'px'
+}
+
+function send() {
+  const text = input.value.trim()
+  if (!text || streaming.value || loading.value) return
+  input.value = ''
+  showEmoji.value = false
+  resetInputHeight()
+  error.value = ''
+  review.value = null
+
+  const clientMsgId = uuid()
+  messages.value.push({ role: 'user', content: text, timestamp: new Date().toISOString() })
+  const assistant = { role: 'assistant', content: '', timestamp: '', failed: false, text }
+  messages.value.push(assistant)
+  streaming.value = true
+  scrollToBottom()
+
+  streamCtrl = streamChat({
+    sessionId: props.sessionId,
+    userInput: text,
     clientMsgId,
-    onToken: (t) => {
-      assistant.content += t
+    onMeta: (meta) => {
+      lastTurnId.value = meta.turn_id || ''
+    },
+    onToken: (token) => {
+      assistant.content += token
       scrollToBottom()
     },
-    onDone: (done) => {
+    onDone: (payload) => {
       streamCtrl = null
-      // 以服务端最终文本为准：流式被兜底/截断时与落库、侧栏预览保持一致
-      assistant.content = done.reply || assistant.content
+      streaming.value = false
+      assistant.content = payload.reply || assistant.content
       assistant.timestamp = new Date().toISOString()
       assistant.failed = false
-      streaming.value = false
-      meta.value = {
-        relationship_stage: done.relationship_stage || meta.value.relationship_stage,
-        relationship_score: done.relationship_score ?? meta.value.relationship_score,
-        mood: done.mood || meta.value.mood,
-        mood_intensity: done.mood_intensity ?? meta.value.mood_intensity,
-      }
-      emit('sent', done)
+      lastTurnId.value = payload.turn_id || lastTurnId.value
+      if (payload.status === 'awaiting_review') review.value = payload
+      emit('sent', payload)
       scrollToBottom()
     },
     onError: (err) => {
       streamCtrl = null
       streaming.value = false
       assistant.failed = true
-      assistant.retryText = text
-      assistant.clientMsgId = clientMsgId
-      if (!assistant.content) {
-        assistant.content = '（发送失败：' + (err.message || '网络错误') + '）'
-      } else {
-        assistant.content += '\n\n（回复中断）'
-      }
+      error.value = err.message || '发送失败'
+      if (!assistant.content) assistant.content = '（没发出去，点下面重试）'
     },
   })
 }
 
-async function send() {
-  const text = input.value.trim()
-  if (!text || streaming.value || loading.value) return
-  input.value = ''
-  showEmoji.value = false
-
-  // 每条消息生成一个幂等键；重试复用同一键，避免服务端重复落库
-  const clientMsgId = uuid()
-  messages.value.push({ role: 'user', content: text, timestamp: new Date().toISOString() })
-  const assistant = { role: 'assistant', content: '', timestamp: '', failed: false }
-  messages.value.push(assistant)
-  streaming.value = true
-  await scrollToBottom()
-
-  startStream(assistant, text, clientMsgId)
+function retry(message) {
+  if (streaming.value || !message.text) return
+  messages.value = messages.value.filter((m) => m !== message)
+  input.value = message.text
+  send()
 }
 
-function retry(assistant) {
-  if (streaming.value || loading.value || !assistant.retryText) return
-  assistant.failed = false
-  assistant.content = ''
-  streaming.value = true
-  scrollToBottom()
-  startStream(assistant, assistant.retryText, assistant.clientMsgId)
+async function decide({ decision, feedback }) {
+  if (!review.value) return
+  reviewing.value = true
+  error.value = ''
+  try {
+    const payload = await api.resumeTurn(review.value.turn_id, decision, feedback)
+    const last = [...messages.value].reverse().find((m) => m.role === 'assistant')
+    if (last) last.content = payload.reply || last.content
+    review.value = null
+    emit('sent', payload)
+  } catch (e) {
+    error.value = e.message || '复核失败'
+  } finally {
+    reviewing.value = false
+  }
 }
 
 function addEmoji(e) {
   input.value += e
+  nextTick(() => inputEl.value?.focus())
 }
 
 function onKeydown(ev) {
-  // 中文输入法组词中（isComposing / keyCode 229）按 Enter 是上屏，不应发送
   if (ev.isComposing || ev.keyCode === 229) return
   if (ev.key === 'Enter' && !ev.shiftKey) {
     ev.preventDefault()
@@ -134,25 +155,7 @@ function onKeydown(ev) {
   }
 }
 
-watch(
-  () => props.session.session_id,
-  () => {
-    // 切换会话：中止仍在进行的流式请求，避免旧请求串台/阻塞
-    if (streamCtrl) {
-      streamCtrl.abort()
-      streamCtrl = null
-    }
-    streaming.value = false
-    meta.value = {
-      relationship_stage: props.session.relationship_stage || 'stranger',
-      relationship_score: props.session.relationship_score || 0,
-      mood: props.session.mood || 'neutral',
-      mood_intensity: props.session.mood_intensity ?? 0.5,
-    }
-    loadHistory()
-  },
-  { immediate: true }
-)
+watch(() => props.sessionId, () => loadHistory(), { immediate: true })
 
 onUnmounted(() => {
   if (streamCtrl) {
@@ -163,62 +166,80 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <div class="chat-window">
-    <header class="chat-header">
-      <Avatar :name="session.name || '小柔'" :src="session.avatar" :size="38" />
-      <div class="title">
-        <div class="title-name">{{ session.name || '小柔' }}</div>
-        <div class="title-status">
-          <span class="badge stage">{{ stageLabel() }}</span>
-          <span class="badge mood">{{ moodEmoji() }} {{ moodLabel() }}</span>
-          <span class="score" :title="'亲密度 ' + Math.round(meta.relationship_score)">
-            <i class="score-bar"><i class="score-fill" :style="{ width: meta.relationship_score + '%' }"></i></i>
-            <em>亲密度 {{ Math.round(meta.relationship_score) }}</em>
-          </span>
-        </div>
+  <div class="chat">
+    <header class="head">
+      <button class="back" aria-label="返回会话列表" @click="emit('back')">‹</button>
+      <span class="head__avatar">
+        <img v-if="avatar" :src="avatar" alt="" />
+        <span v-else class="serif">{{ (name || '柔').slice(0, 1) }}</span>
+      </span>
+      <div class="who">
+        <h1 class="who__name serif">{{ name }}</h1>
+        <p class="who__line">
+          <span>{{ stagePhrase(stage) }}</span>
+          <i class="split" aria-hidden="true"></i>
+          <span>{{ moodEmoji(mood) }} {{ moodLabel(mood) }}</span>
+        </p>
       </div>
-      <button class="more" title="设置" @click="emit('open-settings')">⋯</button>
+      <div class="head__actions">
+        <button class="btn btn--quiet btn--sm" :disabled="!lastTurnId" @click="emit('trace', lastTurnId)">
+          追踪
+        </button>
+      </div>
     </header>
 
-    <div ref="listEl" class="messages">
-      <div v-if="loading" class="hint">加载历史消息…</div>
+    <div ref="listEl" class="thread paper-rules">
+      <p v-if="loading" class="hint">正在取回之前的对话…</p>
       <template v-else>
-        <div v-if="messages.length === 0" class="hint">
-          和 {{ session.name || '小柔' }} 打个招呼吧 👋
-        </div>
-        <template v-for="(m, i) in messages" :key="i">
+        <p v-if="!messages.length" class="hint hint--first">
+          {{ name }}在等你开口。先说一句「在吗」也可以。
+        </p>
+        <template v-for="(m, i) in visibleMessages" :key="i">
           <MessageBubble
             :role="m.role"
             :content="m.content"
             :timestamp="m.timestamp"
-            :name="session.name || '小柔'"
-            :avatar="session.avatar"
+            :name="name"
+            :avatar="avatar"
           />
-          <button
-            v-if="m.failed && m.role === 'assistant'"
-            class="retry"
-            @click="retry(m)"
-          >重试</button>
+          <button v-if="m.failed" class="retry" @click="retry(m)">重新发送</button>
         </template>
       </template>
-      <div v-if="streaming && messages[messages.length - 1]?.content === ''" class="typing">
-        <i></i><i></i><i></i>
+
+      <ReviewGate v-if="review" :turn="review" :busy="reviewing" @decide="decide" />
+
+      <div v-if="streaming && messages[messages.length - 1]?.content === ''" class="typing" aria-live="polite">
+        <span></span><span></span><span></span>
       </div>
     </div>
 
-    <div class="input-area">
+    <p v-if="error" class="error" @click="error = ''">{{ error }}</p>
+
+    <div class="composer">
       <div v-if="showEmoji" class="emoji-panel">
         <button v-for="e in EMOJIS" :key="e" class="emoji" @click="addEmoji(e)">{{ e }}</button>
       </div>
-      <div class="input-bar">
-        <button class="tool" :class="{ on: showEmoji }" @click="showEmoji = !showEmoji">😊</button>
+      <div class="composer__row">
+        <button
+          class="emoji-toggle"
+          :class="{ 'is-on': showEmoji }"
+          title="表情"
+          aria-label="表情"
+          @click="showEmoji = !showEmoji"
+        >
+          ☺
+        </button>
         <textarea
+          ref="inputEl"
           v-model="input"
+          class="composer__input"
           rows="1"
-          placeholder="输入消息…（Enter 发送，Shift+Enter 换行）"
+          placeholder="说点什么…"
+          title="Enter 发送，Shift+Enter 换行"
+          @input="autosize"
           @keydown="onKeydown"
         ></textarea>
-        <button class="btn btn-primary send" :disabled="streaming || loading || !input.trim()" @click="send">
+        <button class="btn btn--primary send" :disabled="streaming || loading || !input.trim()" @click="send">
           发送
         </button>
       </div>
@@ -227,185 +248,220 @@ onUnmounted(() => {
 </template>
 
 <style scoped>
-.chat-window {
-  height: 100%;
+.chat {
   display: flex;
   flex-direction: column;
-  background: var(--wx-bg);
+  height: 100%;
+  min-width: 0;
+  overflow: hidden;
 }
-.chat-header {
+.head {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 12px 18px;
-  background: var(--wx-header-bg);
-  border-bottom: 1px solid var(--wx-border);
+  gap: 11px;
+  padding: 12px clamp(16px, 4vw, 34px);
+  border-bottom: 1px solid var(--line);
+  background: var(--panel);
 }
-.title {
+.back {
+  display: none;
+  font-size: 22px;
+  line-height: 1;
+  color: var(--text-2);
+  padding: 0 4px;
+}
+.head__avatar {
+  width: 34px;
+  height: 34px;
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 9px;
+  overflow: hidden;
+  background: var(--paper);
+  color: var(--paper-ink);
+  font-size: 16px;
+}
+.head__avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.who {
   flex: 1;
   min-width: 0;
 }
-.title-name {
-  font-size: 16px;
-  font-weight: 600;
+.who__name {
+  font-size: var(--step-2);
+  font-weight: 500;
+  line-height: 1.15;
+  color: var(--text);
 }
-.title-status {
+.who__line {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
   margin-top: 3px;
+  font-size: var(--step--1);
+  color: var(--text-2);
   flex-wrap: wrap;
 }
-.badge {
-  font-size: 11px;
-  padding: 1px 7px;
-  border-radius: 10px;
-  line-height: 18px;
+.split {
+  width: 1px;
+  height: 10px;
+  background: var(--line);
 }
-.badge.stage {
-  background: #e8f7ee;
-  color: var(--wx-green-dark);
-}
-.badge.mood {
-  background: #fff3e0;
-  color: #e08a00;
-}
-.score {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  font-style: normal;
-}
-.score em {
-  font-size: 11px;
-  color: var(--wx-text-sub);
-}
-.score-bar {
-  display: inline-block;
-  width: 60px;
-  height: 6px;
-  background: #e0e0e0;
-  border-radius: 3px;
-  overflow: hidden;
-}
-.score-fill {
-  display: block;
-  height: 100%;
-  background: linear-gradient(90deg, #ff9a9e, #fa5151);
-  border-radius: 3px;
-  transition: width 0.4s;
-}
-.more {
-  font-size: 22px;
-  color: #555;
-  width: 34px;
-  height: 34px;
-  border-radius: 6px;
-}
-.more:hover {
-  background: #e6e6e6;
+.head__actions {
+  display: flex;
+  gap: 6px;
 }
 
-.messages {
+.thread {
   flex: 1;
   overflow-y: auto;
-  padding: 20px 0;
+  padding: 22px 0 8px;
+  background-color: var(--bg);
 }
 .hint {
+  padding: 26px clamp(16px, 4vw, 34px);
+  font-size: var(--step-0);
+  color: var(--text-3);
   text-align: center;
-  color: #b2b2b2;
-  font-size: 13px;
-  padding: 30px 20px;
+}
+.hint--first {
+  padding-top: 15vh;
+  font-size: var(--step-1);
+  color: var(--text-2);
 }
 .typing {
   display: flex;
+  align-items: center;
   gap: 4px;
-  padding: 0 16px 0 64px;
-  margin-bottom: 18px;
+  padding: 0 clamp(16px, 4vw, 34px) 4px 58px;
+  margin-bottom: 14px;
 }
-.typing i {
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: #b2b2b2;
-  animation: blink 1.2s infinite;
+.typing span {
+  width: 3px;
+  height: 12px;
+  border-radius: 2px;
+  background: var(--accent);
+  opacity: 0.35;
+  animation: breath 1.05s var(--ease) infinite;
 }
-.typing i:nth-child(2) {
-  animation-delay: 0.2s;
+.typing span:nth-child(2) {
+  animation-delay: 0.16s;
 }
-.typing i:nth-child(3) {
-  animation-delay: 0.4s;
+.typing span:nth-child(3) {
+  animation-delay: 0.32s;
 }
-@keyframes blink {
-  0%, 60%, 100% { opacity: 0.3; }
-  30% { opacity: 1; }
+@keyframes breath {
+  0%,
+  100% {
+    opacity: 0.22;
+    transform: scaleY(0.7);
+  }
+  45% {
+    opacity: 1;
+    transform: scaleY(1);
+  }
 }
-
 .retry {
-  margin: -10px 0 16px 64px;
-  color: #fa5151;
-  font-size: 13px;
-  background: #fff;
-  border: 1px solid #f0c0c0;
-  border-radius: 14px;
-  padding: 3px 14px;
+  display: block;
+  margin: -8px 0 16px 56px;
+  padding: 3px 12px;
+  border-radius: var(--r-tight);
+  font-size: var(--step--1);
+  color: var(--text-2);
+  box-shadow: inset 0 0 0 1px var(--line);
 }
 .retry:hover {
-  background: #fff0f0;
+  color: var(--text);
+  background: var(--line-soft);
 }
-.input-area {
-  border-top: 1px solid var(--wx-border);
-  background: #f7f7f7;
+.error {
+  padding: 6px clamp(16px, 4vw, 34px);
+  font-size: var(--step--1);
+  color: var(--bad);
+  background: color-mix(in srgb, var(--bad) 8%, transparent);
+  cursor: pointer;
+}
+
+.composer {
+  border-top: 1px solid var(--line);
+  background: var(--panel);
 }
 .emoji-panel {
   display: grid;
-  grid-template-columns: repeat(8, 1fr);
+  grid-template-columns: repeat(11, 1fr);
   gap: 2px;
-  padding: 10px 14px;
-  background: #fff;
-  border-bottom: 1px solid var(--wx-border);
-  max-height: 160px;
+  padding: 10px clamp(14px, 3vw, 28px);
+  max-height: 168px;
   overflow-y: auto;
+  border-bottom: 1px solid var(--line-soft);
 }
 .emoji {
-  font-size: 22px;
-  padding: 4px;
-  border-radius: 6px;
+  font-size: 20px;
+  line-height: 1;
+  padding: 5px 0;
+  border-radius: var(--r-tight);
 }
 .emoji:hover {
-  background: #f2f2f2;
+  background: var(--line-soft);
 }
-.input-bar {
+.composer__row {
   display: flex;
   align-items: flex-end;
-  gap: 10px;
-  padding: 10px 14px;
+  gap: 8px;
+  padding: 10px clamp(14px, 3vw, 28px) 12px;
 }
-.tool {
-  font-size: 22px;
+.emoji-toggle {
+  flex-shrink: 0;
   width: 34px;
   height: 34px;
-  border-radius: 6px;
-  flex-shrink: 0;
+  border-radius: var(--r-tight);
+  font-size: 18px;
+  color: var(--text-2);
 }
-.tool.on {
-  background: #e0e0e0;
+.emoji-toggle:hover,
+.emoji-toggle.is-on {
+  color: var(--accent);
+  background: var(--accent-soft);
 }
-.input-bar textarea {
+.composer__input {
   flex: 1;
-  resize: none;
-  border: none;
-  background: #fff;
-  border-radius: 6px;
-  padding: 9px 12px;
-  font-size: 15px;
+  min-width: 0;
+  min-height: 34px;
+  padding: 7px 12px;
+  border-radius: var(--r-box);
+  background: var(--raise);
+  box-shadow: inset 0 0 0 1px var(--line);
+  font-size: var(--step-1);
   line-height: 1.5;
-  max-height: 120px;
-  min-height: 38px;
+  resize: none;
+}
+.composer__input:focus,
+.composer__input:focus-visible {
+  outline: none;
+  box-shadow: inset 0 0 0 1px var(--accent);
 }
 .send {
   flex-shrink: 0;
-  padding: 8px 22px;
-  font-size: 15px;
+  height: 34px;
+  padding: 0 20px;
+}
+
+@media (max-width: 900px) {
+  .back {
+    display: inline-flex;
+  }
+}
+@media (max-width: 640px) {
+  .emoji-panel {
+    grid-template-columns: repeat(8, 1fr);
+  }
+  .send {
+    padding: 0 14px;
+  }
 }
 </style>

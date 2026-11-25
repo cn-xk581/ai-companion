@@ -24,3 +24,8 @@ frontend/dist/
 # 部署脚本运行时产物（nohup 降级模式的 pid/日志）
 aigf.pid
 aigf.log
+
+# 本地临时目录
+pytest-cache-files-*/
+.dsh/
+.idea/

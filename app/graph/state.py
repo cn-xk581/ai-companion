@@ -1,82 +1,61 @@
-"""LangGraph 全局状态：关系阶段、情绪、记忆、对话上下文全部放进 AgentState。
+"""一轮对话的图状态（TypedDict，全部可 JSON 化，逐节点存检查点）。
 
-说明：这里刻意用 Pydantic 普通 list 字段（节点内读改写），而不是 Annotated + operator.add
-reducer —— 本图是顺序执行链路，无需并发合并，普通字段跨 langgraph 版本最稳。
+会话级的持久状态（人设/阶段/分数/情绪）由 service 从仓库加载后放进 state，
+节点只读它、产出**增量**写回，最后 persist 统一落库 —— 避免节点各自写库导致不一致。
 """
 from __future__ import annotations
 
-import uuid
-from datetime import datetime, timezone
+from typing import Any, TypedDict
 
-from pydantic import BaseModel, Field
+from app.domain.companion import TurnStatus
 
-from app.persona.models import MoodState, Persona, RelationshipStage
-
-
-def _now() -> datetime:
-    return datetime.now(timezone.utc)
-
-
-class ChatMessage(BaseModel):
-    role: str  # user | assistant | system | tool
-    content: str
-    tool_name: str | None = None
-    timestamp: datetime = Field(default_factory=_now)
+STATUS_RUNNING = TurnStatus.RUNNING
+STATUS_AWAITING_REVIEW = TurnStatus.AWAITING_REVIEW
+STATUS_DONE = TurnStatus.DONE
+STATUS_BLOCKED = TurnStatus.BLOCKED
+STATUS_FAILED = TurnStatus.FAILED
 
 
-class MemoryItem(BaseModel):
-    id: str = Field(default_factory=lambda: uuid.uuid4().hex)
-    content: str
-    importance: float = Field(default=0.5, ge=0.0, le=1.0)
-    category: str = "fact"  # fact | preference | event | anniversary | story
-    tags: list[str] = Field(default_factory=list)
-    created_at: datetime = Field(default_factory=_now)
-
-
-class ToolCallRequest(BaseModel):
-    name: str
-    arguments: dict = Field(default_factory=dict)
-
-
-class ToolResult(BaseModel):
-    name: str
-    output: str
-    success: bool = True
-
-
-class AgentState(BaseModel):
-    """整张图的运行时状态。节点函数输入它、返回部分更新。"""
-
+class CompanionState(TypedDict, total=False):
     # ---- 身份 ----
+    turn_id: str
     session_id: str
-    user_id: str = "default"
-    trace_id: str = Field(default_factory=lambda: uuid.uuid4().hex)
+    user_id: str
+    started_at: float
 
-    # ---- 本轮输入 ----
-    user_input: str = ""
+    # ---- 输入 ----
+    user_input: str
+    client_msg_id: str | None
 
-    # ---- 幂等 ----
-    client_msg_id: str | None = None  # 客户端消息幂等键：重试同一消息复用同一 id，避免重复落库
-
-    # ---- 人设 & 关系 & 情绪（持久化状态）----
-    persona: Persona = Field(default_factory=Persona)
-    relationship_stage: RelationshipStage = RelationshipStage.STRANGER
-    relationship_score: float = Field(default=0.0, ge=0.0, le=100.0)
-    mood: MoodState = Field(default_factory=MoodState)
+    # ---- 会话状态（进入时快照，persist 时写回） ----
+    persona: dict[str, Any]
+    stage: str
+    score: float
+    mood: dict[str, Any]
 
     # ---- 上下文 ----
-    chat_history: list[ChatMessage] = Field(default_factory=list)  # 滑动窗口短期历史
-    retrieved_memories: list[MemoryItem] = Field(default_factory=list)  # 相关长期记忆
-    new_memories: list[MemoryItem] = Field(default_factory=list)  # 本轮抽取待写入
+    memories: list[str]
+    history: list[dict[str, str]]
 
-    # ---- 规划 & 工具 ----
-    need_tool_call: bool = False
-    tool_calls: list[ToolCallRequest] = Field(default_factory=list)
-    tool_results: list[ToolResult] = Field(default_factory=list)
+    # ---- 运行态 ----
+    safety: dict[str, Any] | None      # 输入风控
+    plan: dict[str, Any] | None
+    calls: list[dict[str, Any]]
+    outcomes: list[dict[str, Any]]
+    tool_text: str
+    draft: str | None
+    reply: str | None
+    review: dict[str, Any] | None      # 输出风控
+    human: dict[str, Any] | None
+    status: str
+    guard: dict[str, Any]
 
-    # ---- 输出 ----
-    agent_reply: str | None = None
-    reject_reason: str | None = None  # prompt_injection | stage_mismatch | forbidden_content ...
+    # ---- 记账 ----
+    llm_calls: int
+    skill_calls: int
+    errors: list[dict[str, Any]]
+    warnings: list[str]
 
-    # ---- 元信息 ----
-    guard_flags: dict = Field(default_factory=dict)
+    # ---- 结果 ----
+    result: dict[str, Any] | None
+    trace_summary: dict[str, Any]

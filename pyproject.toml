@@ -1,13 +1,20 @@
 [project]
-name = "ai-girlfriend-agent"
-version = "0.1.0"
-description = "AI 女友 Agent：FastAPI + LangGraph 八节点状态图 + 记忆/工具/多模态子系统"
+name = "companion-agent"
+version = "2.0.0"
+description = "AI 伴侣 Agent：Skill/MCP 分层 + 多 Agent 隔离 + Redis Skill 注册中心 + LangGraph 检查点续跑 + SingleFlight 去重"
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
     "fastapi>=0.115.0",
     "uvicorn[standard]>=0.30.0",
-    "langgraph>=0.3.0,<1.0",
+    "langgraph>=0.6.0,<1.0",
+    "langgraph-checkpoint>=2.1.0,<3.0",
+    "langgraph-checkpoint-sqlite>=2.0.0,<3.0",
+    "langgraph-checkpoint-postgres>=2.0.0,<3.0",
+    # langgraph-checkpoint-sqlite 2.x 仍使用 aiosqlite.Connection.is_alive()，
+    # 0.21+ 移除了该属性；这里显式钉住上限，避免「启动正常、首次任务才炸」。
+    "aiosqlite>=0.19,<0.21",
+    "psycopg[binary]>=3.1",
     "pydantic>=2.7.0",
     "pydantic-settings>=2.3.0",
     "openai>=1.40.0",
@@ -30,8 +37,8 @@ milvus = ["pymilvus>=2.4.0"]
 pgvector = ["pgvector>=0.3.0"]
 
 [project.scripts]
-aigf-serve = "app.main:run"
-aigf-demo = "examples.chat_demo:main"
+companion-serve = "app.main:run"
+companion-demo = "examples.companion_demo:main"
 
 [build-system]
 requires = ["setuptools>=68"]

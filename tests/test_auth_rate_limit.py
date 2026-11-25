@@ -32,7 +32,7 @@ def test_client_ip_trust_proxy_uses_xff_first_hop():
 
 
 async def test_auth_rate_limit_rejects_after_threshold():
-    ctx, _ = make_ctx()
+    ctx = await make_ctx()
     ctx.settings.auth_rate_limit_per_min = 3
     for _ in range(3):
         await enforce_auth_rate_limit(ctx, "1.2.3.4")  # 前 3 次通过
@@ -42,7 +42,7 @@ async def test_auth_rate_limit_rejects_after_threshold():
 
 
 async def test_login_lockout_after_failures_and_clear_on_success():
-    ctx, _ = make_ctx()
+    ctx = await make_ctx()
     ctx.settings.login_max_failures = 3
     ctx.settings.login_lockout_sec = 900
 

@@ -1,13 +1,17 @@
 # 基础设施：PostgreSQL(pgvector) + Redis
 # 用法：docker compose up -d
+# 库名与容器名统一 companion；从旧库 aigf 迁移：
+#   docker exec -i companion-postgres pg_dump -U postgres aigf | docker exec -i companion-postgres psql -U postgres -d companion
+name: companion
+
 services:
   postgres:
     image: pgvector/pgvector:pg16
-    container_name: aigf-postgres
+    container_name: companion-postgres
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
-      POSTGRES_DB: aigf
+      POSTGRES_DB: companion   # 旧库 aigf 仍在旧卷里，需要时用 pg_dump 迁移
     ports:
       - "5432:5432"
     volumes:
@@ -20,7 +24,7 @@ services:
 
   redis:
     image: redis:7-alpine
-    container_name: aigf-redis
+    container_name: companion-redis
     ports:
       - "6379:6379"
     volumes:

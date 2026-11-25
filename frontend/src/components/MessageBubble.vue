@@ -1,27 +1,34 @@
 <script setup>
 import { computed } from 'vue'
-import Avatar from './Avatar.vue'
-import { formatMsgTime } from '../utils'
 
 const props = defineProps({
-  role: { type: String, required: true }, // user | assistant | system | tool
+  role: { type: String, required: true },
   content: { type: String, default: '' },
   timestamp: { type: String, default: '' },
   name: { type: String, default: '' },
   avatar: { type: String, default: '' },
 })
 
-const isUser = computed(() => props.role === 'user')
+const isMe = computed(() => props.role === 'user')
+const time = computed(() => {
+  if (!props.timestamp) return ''
+  const d = new Date(props.timestamp)
+  if (Number.isNaN(d.getTime())) return ''
+  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
+})
 </script>
 
 <template>
-  <div class="msg" :class="isUser ? 'msg-right' : 'msg-left'">
-    <Avatar :name="isUser ? '我' : name" :src="isUser ? '' : avatar" :size="38" />
-    <div class="msg-body">
-      <div class="bubble" :class="isUser ? 'bubble-out' : 'bubble-in'">
-        <span class="bubble-text">{{ content }}</span>
+  <div class="msg" :class="isMe ? 'is-me' : 'is-her'">
+    <span class="avatar">
+      <img v-if="!isMe && avatar" :src="avatar" alt="" />
+      <span v-else class="serif">{{ isMe ? '我' : (name || '柔').slice(0, 1) }}</span>
+    </span>
+    <div class="body">
+      <div class="bubble">
+        <span class="text">{{ content }}</span>
       </div>
-      <div v-if="timestamp" class="msg-time">{{ formatMsgTime(timestamp) }}</div>
+      <time v-if="time" class="time num">{{ time }}</time>
     </div>
   </div>
 </template>
@@ -31,44 +38,71 @@ const isUser = computed(() => props.role === 'user')
   display: flex;
   align-items: flex-start;
   gap: 10px;
-  margin-bottom: 18px;
-  padding: 0 16px;
+  margin-bottom: 16px;
+  padding: 0 clamp(16px, 4vw, 34px);
 }
-.msg-left {
-  flex-direction: row;
-}
-.msg-right {
+.is-me {
   flex-direction: row-reverse;
 }
-.msg-body {
-  max-width: 62%;
+.avatar {
+  flex-shrink: 0;
+  width: 32px;
+  height: 32px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  overflow: hidden;
+  background: var(--paper);
+  color: var(--paper-ink);
+  font-size: 15px;
+  user-select: none;
+}
+.avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.is-me .avatar {
+  background: var(--me-bg);
+  color: var(--me-ink);
+}
+.body {
   display: flex;
   flex-direction: column;
+  max-width: min(68%, 62ch);
+  min-width: 0;
 }
-.msg-right .msg-body {
+.is-me .body {
   align-items: flex-end;
 }
 .bubble {
-  padding: 10px 13px;
-  border-radius: 6px;
-  position: relative;
+  padding: 9px 13px;
   word-break: break-word;
 }
-.bubble-in {
-  background: #fff;
-  border: 1px solid #f0f0f0;
+.is-her .bubble {
+  background: var(--paper);
+  color: var(--paper-ink);
+  border-radius: 3px 13px 13px 13px;
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.25) inset, 0 2px 10px rgba(0, 0, 0, 0.14);
 }
-.bubble-out {
-  background: var(--wx-bubble-out);
+[data-theme='day'] .is-her .bubble {
+  box-shadow: inset 0 0 0 1px rgba(27, 33, 30, 0.07), 0 1px 2px rgba(27, 33, 30, 0.06);
 }
-.bubble-text {
-  font-size: 15px;
-  line-height: 1.55;
+.is-me .bubble {
+  background: var(--me-bg);
+  color: var(--me-ink);
+  border-radius: 13px 3px 13px 13px;
+}
+.text {
+  display: block;
+  font-size: var(--step-1);
+  line-height: 1.68;
   white-space: pre-wrap;
 }
-.msg-time {
-  font-size: 11px;
-  color: var(--wx-text-sub);
+.time {
   margin-top: 4px;
+  font-size: var(--step--1);
+  color: var(--text-3);
 }
 </style>

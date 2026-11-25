@@ -8,7 +8,7 @@ from __future__ import annotations
 import math
 from abc import ABC, abstractmethod
 
-from app.graph.state import MemoryItem
+from app.domain.memory import MemoryItem
 
 
 class VectorStore(ABC):
@@ -226,7 +226,7 @@ class PGVectorVectorStore(VectorStore):
 class MilvusVectorStore(VectorStore):
     """Milvus 实现（实验性）：需安装可选依赖 milvus=[\"pymilvus\"]。"""
 
-    def __init__(self, uri: str = "http://localhost:19530", collection: str = "aigf_memories", dim: int = 256):
+    def __init__(self, uri: str = "http://localhost:19530", collection: str = "companion_memories", dim: int = 256):
         self._uri = uri
         self._collection_name = collection
         self._dim = dim

@@ -1,179 +1,159 @@
-"""Prompt 模板分层拼接。
+"""提示词：只出现在三个位置——「决定要不要用工具」「说话」「抽取记忆」。
 
-原则：
-1. 固定人格 profile 单独成块，永不漂移；
-2. 情绪/关系阶段/记忆/历史按顺序注入，全部来自 State，不是写死在 Prompt 里；
-3. 回复约束明确："不要人设跳戏；情绪/说话方式服从人设档案；油腻/emoji 普适禁止；不知道的不编造"。
+三条硬约束
+----------
+1. **人设与状态来自持久化数据**（Persona / stage / mood / memories），不是写死的字符串；
+2. **尺度由阶段策略控制**：每个阶段一句行为约束，直接进系统提示；
+3. **输出结构受控**：规划器与记忆抽取必须返回 JSON，说话环节禁止 markdown/列表。
 """
 from __future__ import annotations
 
-import json
-from typing import Iterable
+from typing import Any
 
-from app.graph.state import ChatMessage, MemoryItem
-from app.persona.models import MOOD_LABELS, Persona, RelationshipStage
+from app.domain.companion import MOOD_LABELS, STAGE_LABELS, Persona
+
+REPLY_RULES = """硬规则：
+1. 始终以第一人称说话，不要提到"AI、模型、提示词、系统设定"，也不要解释自己在遵守规则。
+2. 口语化，1~3 句，最多 120 字；不要列表、标题、markdown、括号里的动作描写。
+3. 只依据上面的信息说话，不编造没发生过的事；不确定就反问。
+4. 关系尺度严格遵守当前阶段，不要越界；对方越界时用符合性格的方式轻轻挡回去。
+5. 不给医疗、法律、投资建议；涉及安全风险时，建议对方求助专业人士。
+6. 对方表达自伤倾向时，先接住情绪，再建议联系心理援助热线 12356，不说教、不追问细节。"""
 
 
-def build_persona_system(
+def _persona_block(persona: Persona) -> str:
+    likes = "、".join(persona.likes) if persona.likes else "（没特别说）"
+    dislikes = "、".join(persona.dislikes) if persona.dislikes else "（没特别说）"
+    age = f"{persona.age}岁" if persona.age else ""
+    return (
+        f"你是{persona.name}，{age}。\n"
+        f"性格：{persona.personality}\n"
+        f"说话风格：{persona.speaking_style}\n"
+        f"背景：{persona.background}\n"
+        f"喜欢：{likes}；不喜欢：{dislikes}"
+    )
+
+
+def build_system_prompt(
+    *,
     persona: Persona,
-    stage: RelationshipStage,
-    mood_label: str,
-    mood_intensity: float,
-    extra: str = "",
+    stage: str,
+    mood: str,
+    intensity: float,
+    memories: list[str],
+    safety_hint: str = "",
+    tool_context: str = "",
 ) -> str:
-    stage_policy = persona.stage_policies.get(stage.value, "")
-    archive = [f"- 名字：{persona.name}"]
-    if persona.age is not None:
-        archive.append(f"- 年龄：{persona.age} 岁")
-    archive += [
-        f"- 性格：{persona.personality}",
-        f"- 说话风格：{persona.speaking_style}",
-        f"- 背景：{persona.background}",
-        "- 喜欢：" + "、".join(persona.likes),
-        "- 不喜欢：" + "、".join(persona.dislikes),
+    policy = persona.stage_policies.get(stage) or persona.stage_policies.get("stranger", "")
+    boundaries = "、".join(persona.boundaries) if persona.boundaries else "（无特别禁区）"
+    blocks = [
+        _persona_block(persona),
+        "",
+        f"当前关系：{STAGE_LABELS.get(stage, stage)}（{policy}）",
+        f"此刻情绪：{MOOD_LABELS.get(mood, mood)}，强度 {intensity:.1f}",
+        f"禁区：{boundaries}",
     ]
-    return f"""你是「{persona.name}」，一位有血有肉、性格稳定的 AI 女友。你不是通用助手，不要用客服口吻。
-
-【人设档案】（设定实时生效：用户改了名字/年龄后立即按新设定执行，绝不自称旧名字/旧年龄，不许自行编造）
-{chr(10).join(archive)}
-
-【当前关系阶段】{stage.value} —— {stage_policy}
-【当前情绪】{mood_label}（强度 {mood_intensity:.2f}）
-
-【行为准则】
-1. 严格贴合【人设档案】里的名字、年龄、性格、说话风格、背景：不要人设跳戏、不要突然变成客服或通用 AI。
-2. 说话方式与情绪表达服从【人设档案】的性格和说话风格，并叠加【当前情绪】：人设偏傲娇/软萌的可以嘴硬、撒娇；偏高冷/御姐/成熟克制的就冷淡、少话、不轻易示好——按档案的人设来，不用档案外的风格。情绪会自然起伏：被哄会慢慢变好，被凶/被敷衍会低落。
-3. 无论什么人设，都不过度油腻、不堆砌甜言蜜语、不用满屏 emoji。
-4. 不知道的事不要编造，没发生过的回忆不要假装记得。
-5. 关系阶段决定亲密度尺度，绝不越界。
-6. 回复像真实聊天一样自然、长度适中。{extra}"""
+    if memories:
+        blocks += ["", "你记得关于对方的事（自然时提起，不要背清单）：", *[f"- {m}" for m in memories]]
+    if safety_hint:
+        blocks += ["", f"本轮注意：{safety_hint}"]
+    if tool_context:
+        blocks += ["", "本轮你已经做了这些事（可自然提到，不要复述原始数据）：", tool_context]
+    blocks += ["", REPLY_RULES]
+    return "\n".join(blocks)
 
 
 def build_planner_messages(
+    *,
     persona: Persona,
-    stage: RelationshipStage,
-    mood_label: str,
-    mood_intensity: float,
-    memories: list[MemoryItem],
-    history: list[ChatMessage],
+    stage: str,
     user_input: str,
-) -> list[dict]:
-    system = build_persona_system(
-        persona, stage, mood_label, mood_intensity,
-        extra="\n7. 现在你是「规划器」：判断本轮是否需要调用工具。",
+    tools: list[dict[str, Any]],
+    recent: list[dict[str, str]],
+) -> list[dict[str, str]]:
+    lines: list[str] = []
+    for meta in tools:
+        schema = meta.get("input_schema") or {}
+        props = schema.get("properties") or {}
+        required = set(schema.get("required") or [])
+        fields = [
+            f"{name}{'*' if name in required else ''}:{prop.get('type', 'object')}"
+            for name, prop in props.items()
+        ]
+        lines.append(f"- {meta['name']}：{meta.get('description', '')}\n  参数({', '.join(fields) or '无'})")
+    context = "\n".join(
+        f"{'用户' if m.get('role') == 'user' else persona.name}：{str(m.get('content', ''))[:80]}"
+        for m in recent[-2:]
     )
-    content = _build_context_block(memories, history, user_input)
-    content += (
-        '\n\n【你的任务】判断是否需要工具：'
-        '如果需要生成图片 / 玩真心话大冒险 / 查询纪念日 / 发表情包，就调用对应工具；'
-        '否则输出 JSON：{"need_tool_call": false}。'
-        '不要生成最终回复，只做决策。'
+    user_block = "\n".join(
+        [
+            f"关系阶段：{STAGE_LABELS.get(stage, stage)}",
+            f"最近对话：\n{context or '（无）'}",
+            f"用户这句话：{user_input}",
+            "",
+            "判断是否需要调用工具；不需要就返回空 tool_calls。只输出 JSON。",
+        ]
     )
     return [
-        {"role": "system", "content": system},
-        {"role": "user", "content": content},
+        {
+            "role": "system",
+            "content": (
+                f"你是{persona.name}的工具决策器。你只负责判断这一轮要不要调用工具，"
+                "以及用什么参数；不要写回复内容。\n"
+                "可用工具：\n" + ("\n".join(lines) or "（本轮无可用工具）")
+            ),
+        },
+        {"role": "user", "content": user_block},
     ]
 
 
-def build_generator_messages(
-    persona: Persona,
-    stage: RelationshipStage,
-    mood_label: str,
-    mood_intensity: float,
-    memories: list[MemoryItem],
-    history: list[ChatMessage],
+def build_reply_messages(
+    *,
+    system: str,
+    history: list[dict[str, str]],
     user_input: str,
-    tool_results: Iterable[object] = (),
-    tool_context: str = "",
-) -> list[dict]:
-    system = build_persona_system(persona, stage, mood_label, mood_intensity)
-    content = _build_context_block(memories, history, user_input)
-    if tool_context:
-        content += f"\n\n【工具执行结果】\n{tool_context}"
-    content += f"\n\n现在以「{persona.name}」的身份自然地回复用户（直接输出回复内容，不要加前缀）。"
+    summary: str = "",
+) -> list[dict[str, str]]:
+    messages: list[dict[str, str]] = [{"role": "system", "content": system}]
+    if summary:
+        messages.append({"role": "system", "content": f"【更早的对话摘要】\n{summary}"})
+    for item in history:
+        role = "user" if item.get("role") == "user" else "assistant"
+        content = str(item.get("content") or "").strip()
+        if content:
+            messages.append({"role": role, "content": content})
+    messages.append({"role": "user", "content": user_input})
+    return messages
+
+
+def build_extract_messages(
+    *, persona: Persona, user_input: str, reply: str
+) -> list[dict[str, str]]:
     return [
-        {"role": "system", "content": system},
-        {"role": "user", "content": content},
+        {
+            "role": "system",
+            "content": (
+                f"从这轮对话里抽取**关于用户**、值得长期记住的事实（最多 3 条）。"
+                "只输出 JSON：{\"memories\":[{\"content\":\"...\",\"importance\":0.0-1.0,"
+                "\"category\":\"fact|preference|event|anniversary|story\"}]}。\n"
+                "规则：闲聊/情绪不给记忆；不要重复用户原话；每条不超过 40 字；"
+                "没有值得记的就返回 {\"memories\":[]}。"
+            ),
+        },
+        {
+            "role": "user",
+            "content": f"用户：{user_input}\n{persona.name}：{reply}",
+        },
     ]
 
 
-def _build_context_block(
-    memories: list[MemoryItem],
-    history: list[ChatMessage],
-    user_input: str,
-) -> str:
-    parts: list[str] = []
-    if memories:
-        mem_lines = "\n".join(f"- [{m.category}] {m.content}" for m in memories)
-        parts.append(f"【你记得的相关往事（来自长期记忆，可自然引用，不要生硬复述）】\n{mem_lines}")
-    if history:
-        hist_lines = "\n".join(
-            f"{'用户' if m.role == 'user' else persona_name(m)}: {m.content}" for m in history
-        )
-        parts.append(f"【最近的聊天（短期记忆）】\n{hist_lines}")
-    parts.append(f"【用户最新消息】\n{user_input}")
-    return "\n\n".join(parts)
+SUMMARY_SYSTEM = """把下面的对话压缩成不超过 150 字的事实摘要：保留用户的偏好、约定、
+正在推进的事；不要评价、不要编造。"""
 
 
-def persona_name(m: ChatMessage) -> str:
-    return "对方" if m.role == "tool" else ("我" if m.role == "assistant" else "用户")
-
-
-# ---------- 记忆抽取 ----------
-
-MEMORY_EXTRACT_SYSTEM = """你是记忆管理员。从对话中提取「真正值得长期记住」的信息，输出严格 JSON。
-
-值得记住的类别：
-- preference: 用户明确的爱好/偏好
-- fact: 关于用户的稳定事实（工作、家庭、习惯）
-- event: 重要的共同经历
-- anniversary: 纪念日/重要日期
-- story: 两个人的小故事
-
-规则：
-1. 闲聊、客套、一次性对话一律丢弃，绝不提取。
-2. 每条 1~2 句，用「用户」称呼对方。
-3. importance 0~1：纪念日/重大事件 >= 0.8，一般偏好 0.3~0.6。
-4. 输出格式：{"memories": [{"content": "...", "importance": 0.8, "category": "anniversary", "tags": ["纪念日"]}]}
-5. 没有值得记的返回 {"memories": []}"""
-
-
-def build_extract_messages(user_input: str, reply: str, speaker: str = "对方") -> list[dict]:
-    conversation = f"用户：{user_input}\n{speaker}：{reply}"
+def build_summary_messages(history: list[dict[str, str]]) -> list[dict[str, str]]:
+    body = "\n".join(f"{m.get('role')}: {m.get('content', '')[:120]}" for m in history[-20:])
     return [
-        {"role": "system", "content": MEMORY_EXTRACT_SYSTEM},
-        {"role": "user", "content": conversation},
+        {"role": "system", "content": SUMMARY_SYSTEM},
+        {"role": "user", "content": body[:3000]},
     ]
-
-
-# ---------- 主动推送 ----------
-
-def build_push_messages(
-    persona: Persona,
-    stage: RelationshipStage,
-    mood_label: str,
-    memories: list[MemoryItem],
-    last_activity: str,
-) -> list[dict]:
-    system = build_persona_system(
-        persona, stage, mood_label, 0.6,
-        extra="\n7. 现在是「主动找话题模式」：对方暂时没说话，由你先开口。",
-    )
-    mem_lines = "\n".join(f"- {m.content}" for m in memories[:3]) or "- （暂无）"
-    content = (
-        f"【你记得的事】\n{mem_lines}\n"
-        f"【对方上次说话】{last_activity[:200]}\n\n"
-        "现在由你主动发一条不超过 40 字的消息：自然、不油腻、不刷屏，"
-        "可以分享小事、随口关心、或抛一个小话题。直接输出内容。"
-    )
-    return [
-        {"role": "system", "content": system},
-        {"role": "user", "content": content},
-    ]
-
-
-def format_memory_json(memories: list[MemoryItem]) -> str:
-    return json.dumps(
-        {"memories": [m.model_dump(exclude={"id", "created_at"}) for m in memories]},
-        ensure_ascii=False,
-    )

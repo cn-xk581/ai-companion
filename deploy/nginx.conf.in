@@ -1,0 +1,45 @@
+# deploy/nginx.conf.in — nginx 站点模板（由 install.sh 渲染，仅 --domain 时使用）
+# 占位符：__DOMAIN__ __PREFIX__ __PORT__
+server {
+    listen 80;
+    listen [::]:80;
+    server_name __DOMAIN__;
+
+    client_max_body_size 4m;
+    access_log /var/log/nginx/companion.access.log;
+    error_log  /var/log/nginx/companion.error.log warn;
+
+    # 前端构建产物（Vue SPA，无路由，index.html 兜底即可）
+    root __PREFIX__/frontend/dist;
+    index index.html;
+
+    location / {
+        try_files $uri $uri/ /index.html;
+    }
+
+    location /assets/ {
+        expires 7d;
+        add_header Cache-Control "public, immutable";
+        try_files $uri =404;
+    }
+
+    # 后端 API：超时给足（单任务最长 120s 护栏 + 排餐时间）
+    location /api/ {
+        proxy_pass http://127.0.0.1:__PORT__;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_connect_timeout 5s;
+        proxy_send_timeout 300s;
+        proxy_read_timeout 300s;
+        proxy_buffering off;
+    }
+
+    # 健康检查不写访问日志，便于探活
+    location = /api/v1/health {
+        access_log off;
+        proxy_pass http://127.0.0.1:__PORT__;
+    }
+}

@@ -1,0 +1,64 @@
+# deploy/docker-compose.infra.yml — 只跑基础设施：PostgreSQL(pgvector) + Redis
+#
+# 由 install.sh 用固定项目名调用：
+#   docker compose -p companion --env-file /opt/companion/.env -f <本文件> up -d
+# 因此资源名是确定的、可审计的：
+#   容器   companion-postgres-1 / companion-redis-1
+#   网络   companion_default
+#   卷     companion_pgdata / companion_redisdata
+# 卸载时 `docker compose -p companion down -v` 一次清干净。
+#
+# 所有端口只绑定 127.0.0.1：数据库不暴露公网。
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${PG_USER:?PG_USER 未设置}
+      POSTGRES_PASSWORD: ${PG_PASSWORD:?PG_PASSWORD 未设置}
+      POSTGRES_DB: ${PG_DB:?PG_DB 未设置}
+      # 中文排序 + 时区，避免容器与宿主机行为不一致
+      TZ: Asia/Shanghai
+    ports:
+      - "127.0.0.1:${PG_PORT:-5432}:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${PG_USER} -d ${PG_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command:
+      - redis-server
+      - --appendonly
+      - "yes"
+      - --maxmemory-policy
+      - noeviction
+    ports:
+      - "127.0.0.1:${REDIS_PORT:-6379}:6379"
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+volumes:
+  pgdata:
+  redisdata:

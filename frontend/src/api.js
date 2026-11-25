@@ -1,39 +1,55 @@
+import { readItem, writeItem, removeItem } from './storage'
+
 const API_BASE = '/api/v1'
 
 export function getToken() {
-  return localStorage.getItem('aigf_token') || ''
+  return readItem('companion_token') || ''
 }
-
-export function setToken(t) {
-  localStorage.setItem('aigf_token', t)
+export function setToken(token) {
+  writeItem('companion_token', token)
 }
-
 export function clearToken() {
-  localStorage.removeItem('aigf_token')
+  removeItem('companion_token')
+}
+export function getAdminToken() {
+  return readItem('companion_admin_token') || ''
+}
+export function setAdminToken(token) {
+  if (token) writeItem('companion_admin_token', token)
+  else removeItem('companion_admin_token')
 }
 
-async function request(path, { method = 'GET', body, token = null, raw = false } = {}) {
+async function request(path, { method = 'GET', body, token = null, admin = false } = {}) {
   const headers = { 'Content-Type': 'application/json' }
   const t = token === null ? getToken() : token
-  if (t) headers['Authorization'] = `Bearer ${t}`
+  if (t) headers.Authorization = `Bearer ${t}`
+  if (admin) headers['X-Admin-Token'] = getAdminToken()
 
-  const res = await fetch(`${API_BASE}${path}`, {
-    method,
-    headers,
-    body: body === undefined ? undefined : JSON.stringify(body),
-  })
-
+  let res
+  try {
+    res = await fetch(`${API_BASE}${path}`, {
+      method,
+      headers,
+      body: body === undefined ? undefined : JSON.stringify(body),
+    })
+  } catch (e) {
+    const err = new Error('连不上服务：' + (e.message || '网络错误'))
+    err.status = 0
+    throw err
+  }
   if (!res.ok) {
     let detail = res.statusText
     try {
       const j = await res.json()
-      detail = j.detail || j.message || detail
-    } catch { /* ignore */ }
-    const err = new Error(detail)
+      detail = typeof j.detail === 'string' ? j.detail : j.detail?.message || j.message || detail
+    } catch {
+      /* 非 JSON 错误体 */
+    }
+    const err = new Error(detail || `请求失败（${res.status}）`)
     err.status = res.status
     throw err
   }
-  if (raw || res.status === 204) return null
+  if (res.status === 204) return null
   return res.json()
 }
 
@@ -42,47 +58,56 @@ export const api = {
     request('/auth/register', { method: 'POST', body: { username, password }, token: '' }),
   login: (username, password) =>
     request('/auth/login', { method: 'POST', body: { username, password }, token: '' }),
-  me: () => request('/auth/me'),
 
-  listSessions: () => request('/session/list'),
+  listSessions: () => request('/sessions'),
   createSession: (sessionId) =>
-    request('/session/create', { method: 'POST', body: { session_id: sessionId || null } }),
-  getSessionDetail: (sessionId) =>
-    request(`/session/detail?session_id=${encodeURIComponent(sessionId)}`),
-  getHistory: (sessionId, limit = 200) =>
-    request(`/session/history?session_id=${encodeURIComponent(sessionId)}&limit=${limit}`),
+    request('/sessions', { method: 'POST', body: { session_id: sessionId || null } }),
+  getSession: (id) => request(`/sessions/${encodeURIComponent(id)}`),
+  getHistory: (id, limit = 100) =>
+    request(`/sessions/${encodeURIComponent(id)}/history?limit=${limit}`),
+  updatePersona: (id, persona) =>
+    request(`/sessions/${encodeURIComponent(id)}/persona`, { method: 'PUT', body: persona }),
+  resetSession: (id, clearMemories = true) =>
+    request(`/sessions/${encodeURIComponent(id)}/reset`, {
+      method: 'POST',
+      body: { clear_memories: clearMemories },
+    }),
 
-  chat: (sessionId, userInput, clientMsgId) =>
-    request('/chat', { method: 'POST', body: { session_id: sessionId, user_input: userInput, client_msg_id: clientMsgId || null } }),
+  listMemories: () => request('/memories'),
+  deleteMemory: (memoryId) => request(`/memories/${encodeURIComponent(memoryId)}`, { method: 'DELETE' }),
 
-  resetSession: (sessionId) =>
-    request('/session/reset', { method: 'POST', body: { session_id: sessionId } }),
+  getTurn: (turnId) => request(`/turns/${encodeURIComponent(turnId)}`),
+  resumeTurn: (turnId, decision, feedback = '') =>
+    request(`/turns/${encodeURIComponent(turnId)}/resume`, {
+      method: 'POST',
+      body: { decision, feedback },
+    }),
+  traceTurn: (turnId, limit = 500) =>
+    request(`/turns/${encodeURIComponent(turnId)}/trace?limit=${limit}`),
 
-  listMemories: (sessionId) =>
-    request(`/memory/list?session_id=${encodeURIComponent(sessionId)}`),
-  deleteMemory: (sessionId, memoryId) =>
-    request('/memory/delete', { method: 'POST', body: { session_id: sessionId, memory_id: memoryId } }),
-
-  updatePersona: (sessionId, persona) =>
-    request('/persona/update', { method: 'PUT', body: { session_id: sessionId, persona } }),
+  listSkills: () => request('/skills'),
+  setSkill: (name, enabled) =>
+    request(`/skills/${encodeURIComponent(name)}/${enabled ? 'enable' : 'disable'}`, {
+      method: 'POST',
+      admin: true,
+    }),
+  health: () => request('/health'),
 }
 
-// SSE 流式聊天：返回 AbortController 便于取消
-export function streamChat(sessionId, userInput, { onToken, onDone, onError, clientMsgId } = {}) {
+/** SSE 流式对话：返回 AbortController。事件：meta / token / done / error */
+export function streamChat({ sessionId, userInput, clientMsgId, onMeta, onToken, onDone, onError }) {
   const controller = new AbortController()
   let settled = false
-
-  // 保证 done/error 只触发一次（连接提前关闭时也必然触发一个终结回调）
-  const finishOk = (msg) => {
+  const finishOk = (payload) => {
     if (!settled) {
       settled = true
-      onDone(msg)
+      onDone?.(payload)
     }
   }
   const finishErr = (err) => {
     if (!settled) {
       settled = true
-      onError(err)
+      onError?.(err)
     }
   }
 
@@ -92,7 +117,7 @@ export function streamChat(sessionId, userInput, { onToken, onDone, onError, cli
       'Content-Type': 'application/json',
       Authorization: `Bearer ${getToken()}`,
     },
-    body: JSON.stringify({ session_id: sessionId, user_input: userInput, client_msg_id: clientMsgId || null }),
+    body: JSON.stringify({ session_id: sessionId, user_input: userInput, client_msg_id: clientMsgId }),
     signal: controller.signal,
   })
     .then(async (res) => {
@@ -100,8 +125,10 @@ export function streamChat(sessionId, userInput, { onToken, onDone, onError, cli
         let detail = res.statusText
         try {
           const j = await res.json()
-          detail = j.detail || j.message || detail
-        } catch { /* ignore */ }
+          detail = j.detail || detail
+        } catch {
+          /* ignore */
+        }
         finishErr(new Error(detail))
         return
       }
@@ -128,16 +155,15 @@ export function streamChat(sessionId, userInput, { onToken, onDone, onError, cli
             } catch {
               continue
             }
-            if (msg.type === 'token') onToken(msg.content)
+            if (msg.type === 'meta') onMeta?.(msg)
+            else if (msg.type === 'token') onToken?.(msg.content || '')
             else if (msg.type === 'done') finishOk(msg)
             else if (msg.type === 'error') finishErr(new Error(msg.message || '未知错误'))
           }
         }
       }
-      buf += decoder.decode() // 解码器 final flush
-      // 服务端在 done/error 之前关闭了连接（被用户 abort 除外）
       if (!settled && !controller.signal.aborted) {
-        finishErr(new Error('回复中断，连接提前关闭，请重试'))
+        finishErr(new Error('连接提前关闭，请重试'))
       }
     })
     .catch((e) => {

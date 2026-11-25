@@ -5,10 +5,10 @@ export function uuid() {
   return Math.random().toString(16).slice(2) + Date.now().toString(16)
 }
 
-// 微信风格的会话列表时间：今天显示 HH:mm，昨天显示「昨天」，更早显示 月/日
 export function formatListTime(iso) {
   if (!iso) return ''
   const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return ''
   const now = new Date()
   const hh = String(d.getHours()).padStart(2, '0')
   const mm = String(d.getMinutes()).padStart(2, '0')
@@ -19,18 +19,22 @@ export function formatListTime(iso) {
   return `${d.getMonth() + 1}/${d.getDate()}`
 }
 
-// 聊天气泡内的时间
-export function formatMsgTime(iso) {
-  if (!iso) return ''
-  const d = new Date(iso)
-  const hh = String(d.getHours()).padStart(2, '0')
-  const mm = String(d.getMinutes()).padStart(2, '0')
-  return `${hh}:${mm}`
+export function formatDuration(ms) {
+  if (ms === null || ms === undefined) return ''
+  const n = Number(ms)
+  if (Number.isNaN(n)) return ''
+  return n < 1000 ? `${Math.round(n)}ms` : `${(n / 1000).toFixed(n < 10000 ? 2 : 1)}s`
+}
+
+export function truncate(text, n = 24) {
+  if (!text) return ''
+  const clean = String(text).replace(/\s+/g, ' ').trim()
+  return clean.length > n ? clean.slice(0, n) + '…' : clean
 }
 
 const AVATAR_COLORS = [
-  '#07c160', '#576b95', '#ed6a5e', '#f4a259', '#00bcd4',
-  '#9c27b0', '#795548', '#ff7043', '#607d8b', '#e91e63',
+  '#6b7a8f', '#8a6f63', '#5f7a6a', '#7a6a86',
+  '#87695f', '#4f6f7a', '#7d7a5f', '#6a6a7a',
 ]
 
 export function avatarColor(seed = '') {
@@ -39,7 +43,15 @@ export function avatarColor(seed = '') {
   return AVATAR_COLORS[h % AVATAR_COLORS.length]
 }
 
-export function truncate(s, n = 40) {
-  if (!s) return ''
-  return s.length > n ? s.slice(0, n) + '…' : s
+export function defaultPersona() {
+  return {
+    name: '小柔',
+    age: 22,
+    personality: '温柔、有点小傲娇，会在乎对方但嘴硬，偶尔撒娇',
+    speaking_style: '口语化、带点俏皮，喜欢用语气词（哼、嘛、呀），生气时话变少',
+    background: '都市白领，喜欢猫、奶茶和深夜电影',
+    likes: ['猫', '奶茶', '深夜电影'],
+    dislikes: ['被敷衍', '被鸽'],
+    boundaries: ['不聊政治', '不提供医疗建议'],
+  }
 }
