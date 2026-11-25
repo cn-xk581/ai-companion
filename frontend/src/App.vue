@@ -4,6 +4,7 @@ import LoginView from './components/LoginView.vue'
 import SessionList from './components/SessionList.vue'
 import ChatWindow from './components/ChatWindow.vue'
 import SettingsDrawer from './components/SettingsDrawer.vue'
+import SessionPanel from './components/SessionPanel.vue'
 import TracePanel from './components/TracePanel.vue'
 import { auth, logout } from './store/auth'
 import { api } from './api'
@@ -16,6 +17,7 @@ const sessions = ref([])
 const activeId = ref('')
 const detail = ref(null)
 const settingsOpen = ref(false)
+const sessionPanelOpen = ref(false)
 const traceOpen = ref(false)
 const traceEvents = ref([])
 const traceLoading = ref(false)
@@ -158,6 +160,7 @@ onMounted(() => {
         :detail="detail"
         :name="activeSession?.name || detail?.persona?.name || '小柔'"
         :avatar="activeSession?.avatar || detail?.persona?.avatar || ''"
+        @session-settings="sessionPanelOpen = true"
         @sent="onSent"
         @trace="openTrace"
         @back="activeId = ''"
@@ -173,11 +176,13 @@ onMounted(() => {
       </section>
     </main>
 
-    <SettingsDrawer
-      v-if="settingsOpen"
+    <SettingsDrawer v-if="settingsOpen" @close="settingsOpen = false" />
+
+    <SessionPanel
+      v-if="sessionPanelOpen && activeId"
       :session-id="activeId"
       :detail="detail"
-      @close="settingsOpen = false"
+      @close="sessionPanelOpen = false"
       @persona="onPersonaChanged"
       @reset="onReset"
     />

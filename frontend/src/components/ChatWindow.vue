@@ -12,7 +12,7 @@ const props = defineProps({
   name: { type: String, default: '小柔' },
   avatar: { type: String, default: '' },
 })
-const emit = defineEmits(['sent', 'trace', 'back'])
+const emit = defineEmits(['sent', 'trace', 'back', 'session-settings'])
 
 const messages = ref([])
 const input = ref('')
@@ -237,6 +237,13 @@ onUnmounted(() => {
         </p>
       </div>
       <div class="head__actions">
+        <button
+          class="btn btn--quiet btn--sm"
+          title="人设 / 记忆 / 能力（只对当前会话）"
+          @click="emit('session-settings')"
+        >
+          会话设置
+        </button>
         <button class="btn btn--quiet btn--sm" :disabled="!lastTurnId" @click="emit('trace', lastTurnId)">
           追踪
         </button>
