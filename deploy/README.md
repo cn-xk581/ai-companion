@@ -16,7 +16,8 @@
 | Node | ≥ 18（仅构建前端；可用 `--no-frontend` 跳过） | `node -v` |
 | Docker | 需要 `docker` + `docker compose` v2（`--no-docker` 可跳过） | `docker compose version` |
 | 端口 | 8000（后端）、5432/6379（仅绑 127.0.0.1） | `ss -ltnp` |
-| 磁盘 | ≥ 6 GB（torch + bge 模型 + 依赖）；`--skip-embed` 可降到 ~1 GB | `df -h` |
+| 磁盘 | ≥ 10 GB（默认 CUDA 版 torch 较大）；加 `--torch-cpu` 可省 2 GB+，`--skip-embed` 再降到 ~1 GB | `df -h` |
+|
 | 内存 | ≥ 2 GB（bge-small 常驻约 300MB） | `free -h` |
 
 首次安装会下载 Python 依赖（含 torch，5~15 分钟）与 bge-small-zh 模型（约 95MB，首次启动时下载）。
@@ -46,6 +47,9 @@ sudo DATABASE_URL=postgresql+asyncpg://u:p@10.0.0.5:5432/companion \
 
 # 先跑通联调（hash 嵌入 + dev 模式，不具备生产语义）
 sudo bash deploy/install.sh --skip-embed --llm-key sk-xxx
+
+# 磁盘紧张 / 不需要 GPU：只装 CPU 版 torch（省 2GB+）
+sudo bash deploy/install.sh --llm-key sk-xxx --torch-cpu
 ```
 
 参数全表：`bash deploy/install.sh --help`。
@@ -193,6 +197,8 @@ ls /etc/nginx/sites-enabled/companion.conf /etc/systemd/system/companion.service
 
 | 现象 | 原因 | 处理 |
 |---|---|---|
+|
+| 装依赖时 `[Errno 28] No space left on device` | 磁盘被 pip 缓存 / CUDA 版 torch 写满 | `df -h`；清 `~/.cache/pip`、`docker system prune -af`、`journalctl --vacuum-size=200M`；重跑加 `--torch-cpu` 或 `--skip-embed` |
 | 安装报「端口 8000 已被占用」 | 已有服务占用 | `ss -ltnp \| grep 8000`，换 `--port` 或先停旧服务 |
 | `docker 守护进程不可用` | Docker 未启动 | `systemctl enable --now docker` |
 | 健康检查 300s 超时 | 首次下载 bge 模型慢 / PG 未就绪 | 看 `journalctl -u companion -n 80`；或先 `--skip-embed` 联调 |

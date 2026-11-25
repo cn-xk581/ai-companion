@@ -37,6 +37,7 @@ PIP_INDEX="https://pypi.tuna.tsinghua.edu.cn/simple"
 NPM_REGISTRY="https://registry.npmmirror.com"
 WITH_EMBED=1
 REGISTRY_MIRROR=""
+TORCH_CPU=0
 WITH_DOCKER=1
 WITH_NGINX=1
 WITH_FRONTEND=1
@@ -61,6 +62,7 @@ usage() {
   --pip-index URL     pip 源（默认清华镜像）
   --npm-registry URL  npm 源（默认 npmmirror）
   --registry-mirror URL  配置 Docker registry 镜像（写入 /etc/docker/daemon.json 并重启 docker）
+  --torch-cpu        安装 CPU 版 torch（不拉 CUDA 依赖，省 2GB+ 磁盘）
   --skip-embed        不装 sentence-transformers，改用 hash 嵌入 + dev 模式（仅联调用）
   --no-docker         不启动内置 PG/Redis（需自备 DATABASE_URL / REDIS_URL）
   --no-frontend       跳过前端构建（沿用已有 frontend/dist）
@@ -93,6 +95,7 @@ while [[ $# -gt 0 ]]; do
     --pip-index) PIP_INDEX="$2"; shift 2 ;;
     --npm-registry) NPM_REGISTRY="$2"; shift 2 ;;
     --skip-embed) WITH_EMBED=0; shift ;;
+    --torch-cpu) TORCH_CPU=1; shift ;;
     --no-docker) WITH_DOCKER=0; shift ;;
     --no-frontend) WITH_FRONTEND=0; shift ;;
     --no-nginx) WITH_NGINX=0; shift ;;
@@ -229,6 +232,17 @@ fi
 if [[ "$DRY_RUN" != "1" ]] && port_in_use "$PORT"; then
   die "端口 $PORT 已被占用（ss -ltnp | grep :$PORT）"
 fi
+# 磁盘：torch + 依赖 + 镜像，默认至少 4GB 可用
+if [[ "$DRY_RUN" != "1" ]]; then
+  avail_kb=$(df -Pk "$(dirname "$PREFIX")" 2>/dev/null | awk 'NR==2 {print $4}')
+  avail_kb=${avail_kb:-0}
+  if (( avail_kb < 4*1024*1024 )); then
+    die "磁盘空间不足：$(dirname "$PREFIX") 仅剩 $((avail_kb/1024))MB，至少需要 4GB。先清理或用 --torch-cpu / --skip-embed"
+  elif (( avail_kb < 8*1024*1024 )); then
+    warn "磁盘仅剩 $((avail_kb/1024))MB：首次装 torch 可能占用 2~3GB，建议腾到 8GB 以上或加 --torch-cpu"
+  fi
+fi
+
 if [[ -n "$REGISTRY_MIRROR" ]]; then
   if [[ "$WITH_DOCKER" == "1" ]]; then
     configure_docker_mirror "$REGISTRY_MIRROR"
@@ -357,12 +371,25 @@ ok ".env 已写入（root:$GROUP 640）"
 # ---------- Python ----------
 section "5/9 Python 环境（venv + 依赖）"
 if [[ "$DRY_RUN" == "1" ]]; then
+  if [[ "$TORCH_CPU" == "1" ]]; then
+    printf '  %s pip install torch --index-url https://download.pytorch.org/whl/cpu（CPU 版）\n' "${C_YELLOW}[dry-run]${C_RESET}" >&2
+  fi
   printf '  %s %s -m venv %s/.venv && pip install -e "%s%s"\n' \
     "${C_YELLOW}[dry-run]${C_RESET}" "$PYTHON_BIN" "$PREFIX" "$PREFIX" "$([[ $WITH_EMBED == 1 ]] && echo '[embed]')" >&2
 else
+  # pip 缓存与临时文件放 data 目录，避免把 / 写满（torch 单个 wheel 500MB+）
+  PIP_CACHE_DIR="$PREFIX/data/pip-cache"
+  TMPDIR="$PREFIX/data/tmp"
+  export PIP_CACHE_DIR TMPDIR
+  run mkdir -p "$PIP_CACHE_DIR" "$TMPDIR"
+
   [[ -x "$PREFIX/.venv/bin/python" ]] || run "$PYTHON_BIN" -m venv "$PREFIX/.venv"
   run "$PREFIX/.venv/bin/python" -m pip install --quiet --upgrade pip -i "$PIP_INDEX"
   if [[ "$WITH_EMBED" == "1" ]]; then INSTALL_TARGET="$PREFIX[embed]"; else INSTALL_TARGET="$PREFIX"; fi
+  if [[ "$TORCH_CPU" == "1" ]]; then
+    log "安装 CPU 版 torch（不拉 CUDA 依赖，省 2GB+）"
+    run "$PREFIX/.venv/bin/python" -m pip install --no-cache-dir torch --index-url https://download.pytorch.org/whl/cpu
+  fi
   log "安装依赖（首次含 torch，5~15 分钟）…"
   run_shell "'$PREFIX/.venv/bin/python' -m pip install -e '$INSTALL_TARGET' -i '$PIP_INDEX'"
   run env "PYTHONPATH=$PREFIX" "$PREFIX/.venv/bin/python" -c "import app.main" >/dev/null

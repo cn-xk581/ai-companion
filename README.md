@@ -283,6 +283,8 @@ systemd `companion`、compose 项目 `companion`（PG + Redis，端口只绑 127
 安装顺序：**先把依赖全部下完**（Python venv、npm 构建、Docker 镜像），**再启动容器与服务**；
 任何下载失败都停在动系统之前。国内网络拉不动镜像时加 `--registry-mirror https://docker.m.daocloud.io`。
 
+磁盘紧张（或不需要 GPU）时加 `--torch-cpu`：只装 CPU 版 torch，省 2 GB+。
+
 ---
 
 ## 质量与验证
