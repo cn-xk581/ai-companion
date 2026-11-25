@@ -200,6 +200,9 @@ ls /etc/nginx/sites-enabled/companion.conf /etc/systemd/system/companion.service
 |
 | 装依赖时 `[Errno 28] No space left on device` | 磁盘被 pip 缓存 / CUDA 版 torch 写满 | `df -h`；清 `~/.cache/pip`、`docker system prune -af`、`journalctl --vacuum-size=200M`；重跑加 `--torch-cpu` 或 `--skip-embed` |
 | 安装报「端口 8000 已被占用」 | 已有服务占用 | `ss -ltnp \| grep 8000`，换 `--port` 或先停旧服务 |
+| 启动即 `PermissionError ... load_cert_chain` | asyncpg 0.32 会探测 `~/.postgresql/postgresql.crt`，服务用户 home（`/var/lib/companion`）不可进入时抛 EACCES | 新版本已自动 `chown root:companion /var/lib/companion` 并给本机库 `ssl=False`；老安装手动执行一次 chown |
+| `Application startup failed` + `表情包数据集缺失` | `app/mcp/data/memes.json` 缺失（旧 `.gitignore` 的 `data/` 把它吞了） | `git pull` 后重装；新版本缺文件只降级，不再拖垮启动 |
+| `restart counter is at N` 一直涨 | 启动失败在重启循环 | `journalctl -u companion -n 60` 看最后一次 Traceback 末尾 |
 | `docker 守护进程不可用` | Docker 未启动 | `systemctl enable --now docker` |
 | 健康检查 300s 超时 | 首次下载 bge 模型慢 / PG 未就绪 | 看 `journalctl -u companion -n 80`；或先 `--skip-embed` 联调 |
 | `password authentication failed` | 旧卷里的密码与 `.env` 不一致 | 更新安装：`.env` 的 `PG_PASSWORD` 与卷内一致；或卸载重装（会删数据） |

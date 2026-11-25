@@ -14,9 +14,11 @@
 from __future__ import annotations
 
 import logging
+import os
 import uuid
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
+from urllib.parse import urlsplit
 from datetime import datetime, timezone
 from typing import Any
 
@@ -322,9 +324,28 @@ class EventRow(Base):
     )
 
 
+_LOOPBACK_HOSTS = {"127.0.0.1", "localhost", "::1"}
+
+
+def is_loopback_url(database_url: str) -> bool:
+    """DSN 是否指向本机（本机 PG 不需要 TLS）。"""
+    try:
+        return (urlsplit(database_url).hostname or "") in _LOOPBACK_HOSTS
+    except ValueError:
+        return False
+
+
 class PostgresRepository(Repository):
     def __init__(self, database_url: str, echo: bool = False) -> None:
-        self._engine: AsyncEngine = create_async_engine(database_url, echo=echo)
+        # asyncpg 0.32 会无条件探测 ~/.postgresql/postgresql.crt；home 不可读时抛
+        # PermissionError（它只吞 FileNotFound）。本机库显式 ssl=False 可绕开；
+        # 需要 TLS 时设 PG_SSL=true。
+        connect_args: dict = {}
+        if is_loopback_url(database_url) and os.getenv("PG_SSL", "").lower() not in ("1", "true", "yes"):
+            connect_args["ssl"] = False
+        self._engine: AsyncEngine = create_async_engine(
+            database_url, echo=echo, connect_args=connect_args
+        )
         self._session_factory = async_sessionmaker(self._engine, expire_on_commit=False)
 
     async def init_db(self) -> None:

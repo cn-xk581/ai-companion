@@ -22,6 +22,7 @@ import os
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from pathlib import Path
+from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 from typing import Any, AsyncIterator
 
 logger = logging.getLogger(__name__)
@@ -35,6 +36,19 @@ class CheckpointerHandle:
 
     def describe(self) -> dict[str, Any]:
         return {"backend": self.backend, "degraded": self.degraded}
+
+
+def _with_local_sslmode(url: str) -> str:
+    """本机 PG 不需要 TLS；显式 sslmode=disable，避免 libpq 读取 ~/.postgresql 下的默认证书。"""
+    try:
+        parts = urlsplit(url)
+    except ValueError:
+        return url
+    if (parts.hostname or "") not in {"127.0.0.1", "localhost", "::1"}:
+        return url
+    query = dict(parse_qsl(parts.query))
+    query.setdefault("sslmode", "disable")
+    return urlunsplit((parts.scheme, parts.netloc, parts.path, urlencode(query), parts.fragment))
 
 
 def _libpq_url(database_url: str) -> str:
@@ -54,7 +68,7 @@ async def open_checkpointer(settings) -> AsyncIterator[CheckpointerHandle]:
         try:
             from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
 
-            url = _libpq_url(settings.database_url)
+            url = _with_local_sslmode(_libpq_url(settings.database_url))
             async with AsyncPostgresSaver.from_conn_string(url) as saver:
                 await saver.setup()
                 logger.info("[checkpoint] 使用 PostgresSaver")

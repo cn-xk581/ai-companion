@@ -264,6 +264,7 @@ fi
 [[ -d "$PREFIX" ]] || CREATED_PREFIX=1
 run mkdir -p "$PREFIX" "$PREFIX/data" "$STATE_DIR"
 run chmod 750 "$PREFIX" "$STATE_DIR"
+run chown root:"$GROUP" "$PREFIX" "$STATE_DIR"
 
 # ---------- 代码 ----------
 section "3/9 拷贝代码（排除 .git/.venv/node_modules/dist/data/.env）"
@@ -286,6 +287,10 @@ fi
 ok "代码已就位"
 
 # ---------- .env ----------
+if [[ "$DRY_RUN" != "1" && ! -f "$PREFIX/app/mcp/data/memes.json" ]]; then
+  warn "缺少表情包数据集 app/mcp/data/memes.json：表情能力会降级（服务仍会启动）"
+fi
+
 section "4/9 写入 .env（保留已有密钥）"
 ENV_FILE="$PREFIX/.env"
 if [[ -f "$ENV_FILE" && "$DRY_RUN" != "1" ]]; then
@@ -337,7 +342,7 @@ else
 fi
 
 [[ "$DRY_RUN" == "1" ]] || : >"$ENV_FILE"
-env_set "$ENV_FILE" APP_NAME "AI 伴侣 Agent"
+env_set "$ENV_FILE" APP_NAME '"AI 伴侣 Agent"'
 env_set "$ENV_FILE" ENVIRONMENT "$APP_ENV"
 env_set "$ENV_FILE" LOG_LEVEL "INFO"
 env_set "$ENV_FILE" LLM_API_KEY "$LLM_KEY"
