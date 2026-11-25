@@ -238,7 +238,7 @@ class MilvusVectorStore(VectorStore):
         try:
             from pymilvus import Collection, CollectionSchema, DataType, FieldSchema, connections, utility
         except ImportError as exc:  # pragma: no cover
-            raise RuntimeError("需要安装 pymilvus：pip install 'ai-girlfriend-agent[milvus]'") from exc
+            raise RuntimeError("需要安装 pymilvus：pip install 'companion-agent[milvus]'") from exc
 
         connections.connect(alias="default", uri=self._uri)
         if utility.has_collection(self._collection_name):

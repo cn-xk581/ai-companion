@@ -74,7 +74,7 @@ class SentenceTransformerEmbedder(Embedder):
             from sentence_transformers import SentenceTransformer
         except ImportError as exc:  # pragma: no cover
             raise RuntimeError(
-                "需要安装 sentence-transformers：pip install 'ai-girlfriend-agent[embed]'"
+                "需要安装 sentence-transformers：pip install 'companion-agent[embed]'"
             ) from exc
         self._model_name = model_name
         self._normalize = normalize
