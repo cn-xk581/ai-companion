@@ -230,7 +230,12 @@ if [[ "$WITH_NGINX" == "1" ]] && ! command_exists nginx; then
   warn "未安装 nginx，将跳过站点配置"; WITH_NGINX=0
 fi
 if [[ "$DRY_RUN" != "1" ]] && port_in_use "$PORT"; then
-  die "端口 $PORT 已被占用（ss -ltnp | grep :$PORT）"
+  # 升级/重装时端口本来就被自己的服务占着：先认出来，别误判成冲突
+  if systemctl is-active --quiet "$SERVICE_NAME" 2>/dev/null; then
+    warn "端口 $PORT 由 $SERVICE_NAME 占用（升级/重装场景），继续；稍后会重启服务"
+  else
+    die "端口 $PORT 已被其他进程占用（ss -ltnp | grep :$PORT）；换 --port 或先停掉它"
+  fi
 fi
 # 磁盘：torch + 依赖 + 镜像，默认至少 4GB 可用
 if [[ "$DRY_RUN" != "1" ]]; then
