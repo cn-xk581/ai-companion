@@ -1,5 +1,5 @@
 <script setup>
-import { computed, nextTick, onUnmounted, ref, watch } from 'vue'
+import { computed, nextTick, onUnmounted, reactive, ref, watch } from 'vue'
 import MessageBubble from './MessageBubble.vue'
 import ReviewGate from './ReviewGate.vue'
 import { api, streamChat } from '../api'
@@ -70,6 +70,65 @@ function autosize(ev) {
   el.style.height = Math.min(el.scrollHeight, 132) + 'px'
 }
 
+let turnBubbles = []
+let turnText = ''
+
+function pushAssistant(initial = '', source = '') {
+  // 用 reactive 包一层：直接改原始对象不会触发渲染（Vue 3 只追踪代理）
+  const bubble = reactive({
+    role: 'assistant',
+    content: initial,
+    timestamp: '',
+    failed: false,
+    text: source,
+  })
+  messages.value.push(bubble)
+  turnBubbles.push(bubble)
+  return bubble
+}
+
+function currentBubble() {
+  if (!turnBubbles.length) return pushAssistant('', turnText)
+  return turnBubbles[turnBubbles.length - 1]
+}
+
+function appendStreamChunk(chunk) {
+  // 模型用换行分隔“连发”的多条消息：遇到换行就开下一个气泡
+  const pieces = String(chunk).split('\n')
+  pieces.forEach((piece, idx) => {
+    if (idx > 0) pushAssistant('', turnText)
+    currentBubble().content += piece
+  })
+  scrollToBottom()
+}
+
+function renderFinalReply(finalText) {
+  const lines = String(finalText || '')
+    .split('\n')
+    .map((line) => line.trim())
+    .filter(Boolean)
+  const kept = lines.length ? lines : ['']
+  messages.value = messages.value.filter((m) => !turnBubbles.includes(m))
+  turnBubbles = []
+  kept.forEach((line, idx) => {
+    const add = () => {
+      messages.value.push(
+        reactive({
+          role: 'assistant',
+          content: line,
+          timestamp: new Date().toISOString(),
+          failed: false,
+          text: turnText,
+        })
+      )
+      scrollToBottom()
+    }
+    if (idx === 0) add()
+    else setTimeout(add, idx * 160) // 多条时逐条出现，像在连发
+  })
+  scrollToBottom()
+}
+
 function send() {
   const text = input.value.trim()
   if (!text || streaming.value || loading.value) return
@@ -81,8 +140,9 @@ function send() {
 
   const clientMsgId = uuid()
   messages.value.push({ role: 'user', content: text, timestamp: new Date().toISOString() })
-  const assistant = { role: 'assistant', content: '', timestamp: '', failed: false, text }
-  messages.value.push(assistant)
+  turnText = text
+  turnBubbles = []
+  pushAssistant('', text)
   streaming.value = true
   scrollToBottom()
 
@@ -93,16 +153,11 @@ function send() {
     onMeta: (meta) => {
       lastTurnId.value = meta.turn_id || ''
     },
-    onToken: (token) => {
-      assistant.content += token
-      scrollToBottom()
-    },
+    onToken: appendStreamChunk,
     onDone: (payload) => {
       streamCtrl = null
       streaming.value = false
-      assistant.content = payload.reply || assistant.content
-      assistant.timestamp = new Date().toISOString()
-      assistant.failed = false
+      renderFinalReply(payload.reply || '')
       lastTurnId.value = payload.turn_id || lastTurnId.value
       if (payload.status === 'awaiting_review') review.value = payload
       emit('sent', payload)
@@ -111,9 +166,9 @@ function send() {
     onError: (err) => {
       streamCtrl = null
       streaming.value = false
-      assistant.failed = true
+      currentBubble().failed = true
       error.value = err.message || '发送失败'
-      if (!assistant.content) assistant.content = '（没发出去，点下面重试）'
+      if (!currentBubble().content) currentBubble().content = '（没发出去，点下面重试）'
     },
   })
 }
