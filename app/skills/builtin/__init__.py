@@ -6,7 +6,6 @@
 from __future__ import annotations
 
 from app.skills.base import Skill
-from app.skills.builtin.memory import MemoryRecallSkill, MemoryRememberSkill
 from app.skills.builtin.mood import MoodUpdateSkill
 from app.skills.builtin.persona import PersonaNormalizeSkill
 from app.skills.builtin.relationship import RelationshipUpdateSkill
@@ -23,9 +22,7 @@ def build_builtin_skills() -> list[Skill]:
         RelationshipUpdateSkill(),
         MoodUpdateSkill(),
         ReplyPolishSkill(),
-        MemoryRecallSkill(),
-        MemoryRememberSkill(),
-        ReminderCreateSkill(),
+                ReminderCreateSkill(),
         ImageReplySkill(),
         MemeReplySkill(),
     ]
@@ -38,8 +35,6 @@ __all__ = [
     "RelationshipUpdateSkill",
     "MoodUpdateSkill",
     "ReplyPolishSkill",
-    "MemoryRecallSkill",
-    "MemoryRememberSkill",
     "ReminderCreateSkill",
     "ImageReplySkill",
     "MemeReplySkill",

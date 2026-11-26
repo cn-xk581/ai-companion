@@ -2,8 +2,6 @@
 from __future__ import annotations
 
 import asyncio
-import uuid
-from dataclasses import dataclass
 import logging
 from abc import ABC, abstractmethod
 from pathlib import Path
@@ -119,39 +117,4 @@ def create_storage(settings) -> ObjectStorage:
     return LocalStorage(settings.media_dir, settings.storage_public_prefix)
 
 
-__all__ = ["ObjectStorage", "LocalStorage", "S3Storage", "create_storage", "ObjectStore", "StoredObject"]
-# ---------------- 旧接口（生成图片/表情等二进制的落盘，保留兼容）----------------
-
-
-@dataclass
-class StoredObject:
-    key: str
-    url: str
-
-
-class ObjectStore:
-    def __init__(self, local_dir: str | None = None, public_base: str | None = None) -> None:
-        self._dir = Path(local_dir) if local_dir else None
-        self._base = public_base or ""
-
-    async def upload_bytes(
-        self, data: bytes, content_type: str = "application/octet-stream", key: str | None = None
-    ) -> StoredObject | None:
-        if self._dir is None:
-            logger.warning("对象存储未配置，跳过持久化")
-            return None
-        key = key or uuid.uuid4().hex
-        ext = _ext_for(content_type)
-        path = self._dir / f"{key}{ext}"
-        path.parent.mkdir(parents=True, exist_ok=True)
-        await asyncio.to_thread(path.write_bytes, data)
-        return StoredObject(key=f"{key}{ext}", url=f"{self._base}/{key}{ext}")
-
-
-def _ext_for(content_type: str) -> str:
-    return {
-        "image/png": ".png",
-        "image/jpeg": ".jpg",
-        "image/webp": ".webp",
-        "image/gif": ".gif",
-    }.get(content_type, ".bin")
+__all__ = ["ObjectStorage", "LocalStorage", "S3Storage", "create_storage"]

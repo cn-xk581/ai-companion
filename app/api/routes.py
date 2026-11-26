@@ -23,9 +23,6 @@ from app.api.schemas import (
     HistoryMessage,
     HistoryResponse,
     MCPListResponse,
-    MemoryDeleteResponse,
-    MemoryItemOut,
-    MemoryListResponse,
     ResetRequest,
     ResetResponse,
     ResumeRequest,
@@ -240,24 +237,6 @@ async def reset_session(
 # ------------------------------ 记忆 ------------------------------
 
 
-@router.get("/memories", response_model=MemoryListResponse)
-async def list_memories(request: Request, user: AuthUser = Depends(get_current_user)):
-    _, service = _deps(request)
-    rows = await service.list_memories(user.user_id)
-    return MemoryListResponse(user_id=user.user_id, memories=[MemoryItemOut(**r) for r in rows])
-
-
-@router.delete("/memories/{memory_id}", response_model=MemoryDeleteResponse)
-async def delete_memory(
-    memory_id: str, request: Request, user: AuthUser = Depends(get_current_user)
-):
-    _, service = _deps(request)
-    return MemoryDeleteResponse(deleted=await service.delete_memory(user.user_id, memory_id))
-
-
-# ------------------------------ 轮次（人工复核 / 审计） ------------------------------
-
-
 @router.get("/turns/{turn_id}", response_model=TurnResponse)
 async def get_turn(turn_id: str, request: Request, user: AuthUser = Depends(get_current_user)):
     _, service = _deps(request)
@@ -468,7 +447,6 @@ def service_info(settings) -> dict[str, Any]:
             "sessions": "GET /api/v1/sessions",
             "persona": "PUT /api/v1/sessions/{id}/persona",
             "history": "GET /api/v1/sessions/{id}/history",
-            "memories": "GET /api/v1/memories",
             "turn": "GET /api/v1/turns/{turn_id}",
             "trace": "GET /api/v1/turns/{turn_id}/trace",
             "resume": "POST /api/v1/turns/{turn_id}/resume",

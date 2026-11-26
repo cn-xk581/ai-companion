@@ -31,13 +31,12 @@ async def test_bootstrap_registers_companion_skills():
     ctx = await make_ctx()
     metas = {m["name"]: m for m in await ctx.skills.list_public()}
     for name in ("persona.normalize", "safety.guard", "relationship.update", "mood.update",
-                 "reply.polish", "memory.recall", "memory.remember", "reminder.create",
-                 "image.reply", "meme.reply"):
+                 "reply.polish", "reminder.create", "image.reply", "meme.reply"):
         assert name in metas, f"缺少内置 Skill：{name}"
     assert metas["reminder.create"]["mcp_tools"] == ["calendar.create", "calendar.list"]
     assert metas["persona.normalize"]["input_schema"]["properties"]
     stats = await ctx.skills.stats()
-    assert stats["total"] >= 10
+    assert stats["total"] >= 8
 
 
 async def test_disable_then_enable_without_restart():

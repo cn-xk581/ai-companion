@@ -62,8 +62,6 @@ async def test_session_ownership_isolation():
         await service.require_session("s1", 2)
     with pytest.raises(SessionOwnershipError):
         await service.create_session("s1", 2)
-    with pytest.raises(SessionOwnershipError):
-        await service.list_memories(2, session_id="s1")
 
     # 本人可正常访问
     record = await service.require_session("s1", 1)

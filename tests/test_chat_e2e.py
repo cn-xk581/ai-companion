@@ -24,7 +24,6 @@ async def _span_count(ctx, turn_id: str, name: str) -> int:
 async def test_normal_turn_persists_reply_state_and_trace():
     llm = StubLLM(
         draft="听起来今天挺累的。先坐下喝口水，我在。",
-        memories=[{"content": "他今天加班到很晚", "importance": 0.7, "category": "event"}],
     )
     ctx = await make_ctx(llm)
     service = await _service(ctx)
@@ -48,8 +47,6 @@ async def test_normal_turn_persists_reply_state_and_trace():
     assert record.mood.current_mood in {"happy", "shy", "neutral", "excited"}
 
     # 长期记忆沉淀
-    memories = await ctx.repo.list_memories(1)
-    assert memories == []  # 预设会话未绑定角色：记忆写入羁绊档案（见 test_relations_memory）
 
     # Trace：LLM + Skill 都有 span，且有决策日志
     events = await ctx.repo.list_events(payload["turn_id"])

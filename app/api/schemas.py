@@ -95,24 +95,6 @@ class ResetResponse(BaseModel):
     cleared_memories: bool = False
 
 
-class MemoryItemOut(BaseModel):
-    id: str
-    content: str
-    importance: float
-    category: str
-    tags: list[str] = Field(default_factory=list)
-    created_at: Any | None = None
-
-
-class MemoryListResponse(BaseModel):
-    user_id: int
-    memories: list[MemoryItemOut]
-
-
-class MemoryDeleteResponse(BaseModel):
-    deleted: bool
-
-
 class ResumeRequest(BaseModel):
     decision: Literal["approve", "reject"]
     feedback: str = Field(default="", max_length=300)

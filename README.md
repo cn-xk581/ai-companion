@@ -6,7 +6,7 @@
 - **产品定位**：一对一陪伴对话，关系会成长、情绪会起伏、久了会记得你，能建提醒 / 画图 / 发表情。
 - **工程定位**：可运维的垂直场景 Agent 框架 —— Skill/MCP 分层、多 Agent 隔离、Redis 能力注册中心、
   断点续跑、同参合并、分类重试、防循环护栏、全链路审计、一键装/卸。
-- **规模**：87 个 Python 文件、约 7.9k 行；15 个前端源文件；55 个离线用例；3 个 MCP 适配器 / 10 个业务 Skill / 4 个 Agent。
+- **规模**：87 个 Python 文件、约 7.9k 行；15 个前端源文件；55 个离线用例；3 个 MCP 适配器 / 8 个业务 Skill / 4 个 Agent。
 
 ![夜灯主题 · 人工复核](frontend/docs/screens/chat-night-review.png)
 
@@ -54,7 +54,7 @@
 | 人设 | 名字/年龄/性格/说话风格/背景/喜好/禁区可改，下一句立刻生效 | `Persona` + `persona.normalize` |
 | 关系 | 五阶段跃迁，分数 0–100，单轮 ±2.5、最多一级 | `relationship.update` |
 | 情绪 | 七种情绪 + 强度衰减，影响语气 | `mood.update` |
-| 记忆 | 跨会话召回，按重要度排序，可查看/删除 | `memory.recall` / `memory.remember` |
+| 记忆 | 三层羁绊：事实/共同经历/会话摘要，可查看/置顶/修改/删除 | `memory_service` + `relation_*` |
 | 提醒 | 「两小时后提醒我打电话」→ 写日历并回话术 | `reminder.create` + calendar MCP |
 | 画图 | 按描述生成一张图并配文 | `image.reply` + image MCP |
 | 表情 | 按情绪/阶段挑一条表情 | `meme.reply` + meme MCP |
@@ -120,13 +120,12 @@ persist（情绪推进 → 关系推进 → 记忆抽取 → 消息/快照落库
 
 | Agent | 能用的 Skill | 能访问的 MCP |
 |---|---|---|
-| `companion_intake` | persona.normalize / safety.guard / memory.recall | — |
-| `companion_replier` | reply.polish / memory.recall | — |
+| `companion_intake` | persona.normalize / safety.guard | — |
+| `companion_replier` | reply.polish | — |
 | `companion_tools` | reminder.create / image.reply / meme.reply | calendar.* / image.* / meme.* |
-| `companion_state` | mood.update / relationship.update / memory.remember | — |
+| `companion_state` | mood.update / relationship.update | — |
 
-共享：`memory.recall` 同时给 intake 与 replier；隔离：replier 调 `reminder.create` 会被 Skill 白名单拒绝，
-即使把 Skill 塞进白名单，缺少 `calendar.*` 也会被 MCP 层拒绝。
+隔离：replier 调 `reminder.create` 会被 Skill 白名单拒绝；即使把 Skill 塞进白名单，缺少 `calendar.*` 也会被 MCP 层拒绝。
 
 ---
 
@@ -247,7 +246,7 @@ app/
 ├── services/                  # chat_service（对话调度）/ character_service（导入导出）/ memory_service（三层记忆）
 ├── graph/                     # state / builder / decision / 7 个节点
 ├── agents/                    # 4 个 Agent 白名单
-├── skills/                    # 基类、注册中心、执行器、10 个业务 Skill
+├── skills/                    # 基类、注册中心、执行器、8 个业务 Skill
 ├── mcp/                       # 协议模型、客户端、适配器注册表、3 个适配器
 ├── core/                      # errors / retry / singleflight / tracing / loopguard / checkpointing / context_window
 ├── domain/                    # 人设、关系、情绪、消息、记忆、角色卡解析（纯数据）
@@ -312,8 +311,6 @@ cd frontend && npm install && npm run dev     # http://127.0.0.1:5173（/api 代
 | PUT | `/api/v1/sessions/{id}/persona` | 改人设（下一轮生效） |
 | GET | `/api/v1/sessions/{id}/history` | 历史消息 |
 | POST | `/api/v1/sessions/{id}/reset` | 重置关系与记忆 |
-| GET | `/api/v1/memories` | 长期记忆列表 |
-| DELETE | `/api/v1/memories/{id}` | 删除一条记忆 |
 | GET | `/api/v1/turns/{id}` | 单轮状态与结果 |
 | POST | `/api/v1/turns/{id}/resume` | 人工复核：`approve` / `reject` |
 | GET | `/api/v1/turns/{id}/trace` | 全链路审计事件 |

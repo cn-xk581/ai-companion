@@ -128,35 +128,7 @@ class ChatService:
                     await memory.clear_session_memory(relation.id, session_id)
                 elif resolved == "all":
                     await memory.clear_relation_memory(relation.id)
-        elif resolved == "all":
-            memories = await self.ctx.repo.list_memories(user_id)
-            for memory in memories:
-                if self.ctx.vector_store is not None:
-                    await self.ctx.vector_store.delete(user_id, memory.id)
-            await self.ctx.repo.clear_memories(user_id)
         return {"session_id": session_id, "cleared_memories": resolved != "keep", "mode": resolved}
-
-    async def list_memories(self, user_id: str, session_id: str | None = None) -> list[dict[str, Any]]:
-        if session_id:
-            await self.require_session(session_id, user_id)
-        rows = await self.ctx.repo.list_memories(user_id)
-        return [
-            {
-                "id": m.id,
-                "content": m.content,
-                "importance": round(m.importance, 2),
-                "category": m.category,
-                "tags": m.tags,
-                "created_at": m.created_at,
-            }
-            for m in rows
-        ]
-
-    async def delete_memory(self, user_id: str, memory_id: str) -> bool:
-        ok = await self.ctx.repo.delete_memory(user_id, memory_id)
-        if ok and self.ctx.vector_store is not None:
-            await self.ctx.vector_store.delete(user_id, memory_id)
-        return ok
 
     # ---------------- 一轮对话 ----------------
 

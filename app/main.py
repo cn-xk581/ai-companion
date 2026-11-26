@@ -47,7 +47,6 @@ from app.services.chat_service import ChatService
 from app.skills.builtin import build_builtin_skills
 from app.skills.executor import SkillExecutor
 from app.skills.registry import SkillRegistry, create_skill_store
-from app.storage.object_store import ObjectStore
 from app.storage.postgres import PostgresRepository, create_repository
 from app.storage.redis_client import create_cache
 
@@ -154,9 +153,6 @@ async def lifespan(app: FastAPI):
             mcp=mcp_client,
             mcp_registry=mcp_registry,
             singleflight=singleflight,
-            object_store=ObjectStore(local_dir="data/objects")
-            if settings.environment != "prod"
-            else None,
             checkpointer_desc=checkpoint.describe(),
         )
         graph = build_graph(ctx, checkpoint.saver)

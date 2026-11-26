@@ -209,32 +209,10 @@ ls /etc/nginx/sites-enabled/companion.conf /etc/systemd/system/companion.service
 | `GET /` 返回 JSON 而不是页面 | `frontend/dist` 缺失 | `npm run build` 后重跑 `--upgrade` |
 | nginx 502 | 后端未启动 / 端口不符 | `systemctl status companion`；核对 nginx 里的 `__PORT__` 渲染值 |
 | 改完 `--domain` 不生效 | 升级模式沿用清单参数 | 先 `uninstall --keep-data`，再用新域名安装 |
-| 卸载后仍有容器 | 曾用旧版脚本（无清单）安装 | `docker compose -p aigf down -v` / `-p mealplan down -v`；或 `uninstall --force --prefix <旧目录>` |
 
 ---
 
-## 8. 从旧版脚本迁移
-
-仓库早期的 `deploy/start.sh|stop.sh|redeploy.sh|common.sh|aigf.service` 已删除（它们没有安装清单、卸载无法保证干净，且服务名/资源名与新版本不一致）。
-
-若服务器上装过旧版：
-
-```bash
-sudo systemctl disable --now aigf 2>/dev/null || true
-sudo rm -f /etc/systemd/system/aigf.service && sudo systemctl daemon-reload
-docker compose -p aigf down -v            # 旧项目名是 aigf
-# 旧目录按实际安装位置删除（装前请先确认路径，不要照抄）
-# 然后用新版：sudo bash deploy/install.sh --domain <域名> --llm-key <key>
-```
-
-> **命名变更（v2.1）**：安装目录 / 系统用户 / systemd 服务 / compose 项目统一为 `companion`。
-> 如果按更早的命名装过（`/opt/mealplan`、`mealplan.service`、compose 项目 `mealplan`），
-> 先用当时那份脚本 `uninstall --yes`，或手动 `systemctl disable --now mealplan`、
-> `docker compose -p mealplan down -v`、`rm -rf /opt/mealplan /var/lib/mealplan`，再装新版。
-
----
-
-## 9. 安全默认值
+## 8. 安全默认值
 
 - 后端与数据库端口**只监听 127.0.0.1**，公网访问必须经 nginx（`--domain` 自动配置）；
 - systemd：`ProtectSystem=strict`、`ProtectHome=true`、`NoNewPrivileges`，只开放 `data/` 与状态目录可写；
@@ -244,7 +222,7 @@ docker compose -p aigf down -v            # 旧项目名是 aigf
 - `--registry-mirror` 写入的 `/etc/docker/daemon.json` 属于机器级设置，**卸载不回收**（会影响同机其他容器），需要时手工删。
 ---
 
-## 10. 接入已有 nginx（服务器上已经有站点）
+## 9. 接入已有 nginx（服务器上已经有站点）
 
 安装脚本只写自己的一份站点文件；机器上已经有 nginx 跑别的站点时，先判断用哪种接法。
 
@@ -389,7 +367,7 @@ curl -sN -X POST https://chat.example.com/api/v1/chat/stream \
 ```
 ---
 
-## 11. 用户体系升级（仅旧安装需要跑一次）
+## 10. 用户体系升级（仅旧安装需要跑一次）
 
 新版本把 `users` 改成 **BIGINT 主键**，并新增 `user_auth`（refresh token）与 `user_profile`（资料）。
 旧库里 `users.id` 是 `VARCHAR(64)`，`sessions/turns/memories.user_id` 也是字符串，**必须先清空重建**（按约定，旧数据只是测试数据）。
@@ -416,7 +394,7 @@ docker exec -i companion-postgres-1 psql -U companion -d companion -c '\dt'
 - 头像写入 `MEDIA_DIR/avatars/{user_id}.webp`，通过 `/media/...` 提供，随安装目录一起清理。
 ---
 
-## 12. 角色卡功能（新表 + 会话绑定）
+## 11. 角色卡功能（新表 + 会话绑定）
 
 ```bash
 # 1) 补 sessions 的新列（新表由应用 create_all 自动建）

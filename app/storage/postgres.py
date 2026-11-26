@@ -42,7 +42,6 @@ from sqlalchemy.ext.asyncio import AsyncEngine, async_sessionmaker, create_async
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 from app.domain.companion import ChatMessage, MoodState, Persona, RelationshipStage
-from app.domain.memory import MemoryItem
 
 logger = logging.getLogger(__name__)
 
@@ -180,19 +179,6 @@ class Repository(ABC):
     @abstractmethod
     async def clear_messages(self, session_id: str) -> None: ...
 
-    # ---- 记忆 ----
-    @abstractmethod
-    async def save_memory(self, user_id: int, memory: MemoryItem) -> None: ...
-
-    @abstractmethod
-    async def list_memories(self, user_id: int) -> list[MemoryItem]: ...
-
-    @abstractmethod
-    async def delete_memory(self, user_id: int, memory_id: str) -> bool: ...
-
-    @abstractmethod
-    async def clear_memories(self, user_id: int) -> int: ...
-
     # ---- 轮次 ----
     @abstractmethod
     async def save_turn(
@@ -230,7 +216,6 @@ class InMemoryRepository(Repository):
         self._seq = 0
         self._sessions: dict[str, SessionRecord] = {}
         self._messages: dict[str, list[ChatMessage]] = {}
-        self._memories: dict[int, dict[str, MemoryItem]] = {}
         self._turns: dict[str, dict[str, Any]] = {}
         self._events: dict[str, list[dict[str, Any]]] = {}
         self._event_seq = 0
@@ -365,21 +350,6 @@ class InMemoryRepository(Repository):
     async def clear_messages(self, session_id: str) -> None:
         self._messages.pop(session_id, None)
 
-    async def save_memory(self, user_id: int, memory: MemoryItem) -> None:
-        self._memories.setdefault(int(user_id), {})[memory.id] = memory
-
-    async def list_memories(self, user_id: int) -> list[MemoryItem]:
-        rows = self._memories.get(int(user_id), {}).values()
-        return sorted(rows, key=lambda m: m.importance, reverse=True)
-
-    async def delete_memory(self, user_id: int, memory_id: str) -> bool:
-        return self._memories.get(int(user_id), {}).pop(memory_id, None) is not None
-
-    async def clear_memories(self, user_id: int) -> int:
-        count = len(self._memories.get(int(user_id), {}))
-        self._memories.pop(int(user_id), None)
-        return count
-
     async def save_turn(
         self, turn_id: str, session_id: str, user_id: int, status: str, payload: dict[str, Any]
     ) -> None:
@@ -502,20 +472,6 @@ class MessageRow(Base):
     role: Mapped[str] = mapped_column(String(16))
     content: Mapped[str] = mapped_column(Text)
     tool_name: Mapped[str | None] = mapped_column(String(64), nullable=True)
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
-    )
-
-
-class MemoryRow(Base):
-    __tablename__ = "memories"
-
-    id: Mapped[str] = mapped_column(String(64), primary_key=True)
-    user_id: Mapped[int] = mapped_column(BigInteger, index=True)
-    content: Mapped[str] = mapped_column(Text)
-    importance: Mapped[float] = mapped_column(Float, default=0.5)
-    category: Mapped[str] = mapped_column(String(32), default="fact")
-    tags: Mapped[list] = mapped_column(JSON, default=list)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
     )
@@ -804,56 +760,6 @@ class PostgresRepository(Repository):
         async with self._session_factory() as session:
             await session.execute(delete(MessageRow).where(MessageRow.session_id == session_id))
             await session.commit()
-
-    # ---- 记忆 ----
-    async def save_memory(self, user_id: int, memory: MemoryItem) -> None:
-        async with self._session_factory() as session:
-            session.add(
-                MemoryRow(
-                    id=memory.id,
-                    user_id=int(user_id),
-                    content=memory.content,
-                    importance=memory.importance,
-                    category=memory.category,
-                    tags=memory.tags,
-                )
-            )
-            await session.commit()
-
-    async def list_memories(self, user_id: int) -> list[MemoryItem]:
-        async with self._session_factory() as session:
-            rows = (
-                await session.execute(
-                    select(MemoryRow)
-                    .where(MemoryRow.user_id == int(user_id))
-                    .order_by(MemoryRow.importance.desc())
-                )
-            ).scalars().all()
-        return [
-            MemoryItem(
-                id=r.id,
-                content=r.content,
-                importance=r.importance,
-                category=r.category,
-                tags=list(r.tags or []),
-                created_at=r.created_at,
-            )
-            for r in rows
-        ]
-
-    async def delete_memory(self, user_id: int, memory_id: str) -> bool:
-        async with self._session_factory() as session:
-            result = await session.execute(
-                delete(MemoryRow).where(MemoryRow.id == memory_id, MemoryRow.user_id == int(user_id))
-            )
-            await session.commit()
-            return result.rowcount > 0
-
-    async def clear_memories(self, user_id: int) -> int:
-        async with self._session_factory() as session:
-            result = await session.execute(delete(MemoryRow).where(MemoryRow.user_id == int(user_id)))
-            await session.commit()
-            return int(result.rowcount or 0)
 
     # ---- 轮次 ----
     async def save_turn(

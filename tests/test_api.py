@@ -38,7 +38,7 @@ def test_health_and_metadata():
         body = health.json()
         assert body["status"] == "ok"
         assert body["domain"] == "companion"
-        assert body["skills"]["total"] >= 10
+        assert body["skills"]["total"] >= 8
         assert "calendar" in body["mcp"]["adapters"]
 
         headers = _auth(client)
@@ -93,20 +93,6 @@ def test_persona_update_takes_effect():
         )
         assert updated.status_code == 200, updated.text
         assert updated.json()["persona"]["name"] == "阿雪"
-
-
-def test_memories_endpoint_and_delete():
-    with _client() as client:
-        headers = _auth(client)
-        session = client.post("/api/v1/sessions", json={}, headers=headers).json()
-        client.post(
-            "/api/v1/chat",
-            json={"session_id": session["session_id"], "user_input": "我最喜欢喝美式咖啡"},
-            headers=headers,
-        )
-        memories = client.get("/api/v1/memories", headers=headers).json()["memories"]
-        # 记忆抽取依赖模型输出；无模型时允许为空，但接口必须可用
-        assert isinstance(memories, list)
 
 
 def test_admin_skill_switch_requires_token():

@@ -6,7 +6,7 @@ from datetime import datetime, timedelta, timezone
 from pydantic import BaseModel
 
 from app.agents.models import AgentProfile
-from app.agents.registry import INTAKE_AGENT, REPLIER_AGENT, TOOLS_AGENT
+from app.agents.registry import REPLIER_AGENT
 from app.skills.base import Skill, SkillContext
 from app.skills.models import SkillCall, SkillMeta
 from tests.conftest import make_ctx
@@ -80,26 +80,3 @@ async def test_mcp_whitelist_blocks_undeclared_resource():
     )
     assert allowed.ok is True
     assert allowed.data["reminder"]["title"] == "探针提醒"
-
-
-async def test_shared_skill_available_to_two_agents():
-    ctx = await make_ctx()
-    for agent, tag in ((INTAKE_AGENT, "intake"), (REPLIER_AGENT, "replier")):
-        sctx = ctx.skill_context(f"t-shared-{tag}", 1, agent)
-        outcome = await ctx.executor.run(
-            SkillCall(skill="memory.recall", args={"query": "他喜欢什么"}), sctx=sctx
-        )
-        assert outcome.ok is True, f"{tag} 应能共享 memory.recall"
-
-
-async def test_disabled_skill_cannot_be_called():
-    ctx = await make_ctx()
-    await ctx.skills.set_enabled("meme.reply", False)
-    sctx = ctx.skill_context("t-off", 1, TOOLS_AGENT)
-    outcome = await ctx.executor.run(SkillCall(skill="meme.reply", args={}), sctx=sctx)
-    assert outcome.ok is False
-    assert outcome.error_kind == "business"
-    assert "下线" in outcome.message
-
-    await ctx.skills.set_enabled("meme.reply", True)
-    assert (await ctx.skills.resolve("meme.reply")).name == "meme.reply"

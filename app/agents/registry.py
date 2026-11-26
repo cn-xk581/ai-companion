@@ -2,12 +2,11 @@
 
 | Agent | 能用的 Skill | 能访问的 MCP | 不能做的（会被拒） |
 |---|---|---|---|
-| companion_intake | persona.normalize / safety.guard / memory.recall | 无 | 生成回复、调提醒 |
-| companion_replier | reply.polish / mood.update / memory.recall | 无 | 建提醒、画图（没有对应 MCP） |
+| companion_intake | persona.normalize / safety.guard | 无 | 生成回复、调提醒 |
+| companion_replier | reply.polish | 无 | 建提醒、画图（没有对应 MCP） |
 | companion_tools | reminder.create / image.reply / meme.reply | calendar.* / image.* / meme.* | 改关系阶段、写记忆 |
-| companion_state | relationship.update / memory.remember | 无 | 调用任何外部工具 |
+| companion_state | mood.update / relationship.update | 无 | 调用任何外部工具 |
 
-`memory.recall` 同时出现在 intake 与 replier，用来验证「同一 Skill 被多个 Agent 共享」；
 `reminder.create` 只给 tools —— 即使 replier 想偷偷建提醒也会被白名单拒绝。
 """
 from __future__ import annotations
@@ -19,7 +18,7 @@ INTAKE_AGENT = AgentProfile(
     id="companion_intake",
     name="接入 Agent",
     description="校验人设、做输入风控、召回长期记忆",
-    allowed_skills=["persona.normalize", "safety.guard", "memory.recall"],
+    allowed_skills=["persona.normalize", "safety.guard"],
     allowed_mcp=[],
     max_skill_calls=4,
     max_llm_calls=0,
@@ -30,7 +29,7 @@ REPLIER_AGENT = AgentProfile(
     id="companion_replier",
     name="回复 Agent",
     description="组织上下文、生成回复、按阶段润色（不碰外部工具）",
-    allowed_skills=["reply.polish", "memory.recall"],
+    allowed_skills=["reply.polish"],
     allowed_mcp=[],
     max_skill_calls=4,
     max_llm_calls=2,
@@ -54,7 +53,7 @@ STATE_AGENT = AgentProfile(
     id="companion_state",
     name="状态 Agent",
     description="推进情绪与关系、沉淀长期记忆",
-    allowed_skills=["mood.update", "relationship.update", "memory.remember"],
+    allowed_skills=["mood.update", "relationship.update"],
     allowed_mcp=[],
     max_skill_calls=4,
     max_llm_calls=0,

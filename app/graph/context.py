@@ -23,7 +23,6 @@ from app.memory.vector_store import VectorStore
 from app.skills.base import SkillContext
 from app.skills.executor import SkillExecutor
 from app.skills.registry import SkillRegistry
-from app.storage.object_store import ObjectStore
 from app.storage.postgres import Repository
 from app.storage.redis_client import Cache
 
@@ -43,7 +42,6 @@ class GraphContext:
     mcp_registry: MCPRegistry
     singleflight: SingleFlight
 
-    object_store: ObjectStore | None = None
     relations: Any = None
     memory: Any = None
     notifier: Callable[[str, str], None] | None = None
