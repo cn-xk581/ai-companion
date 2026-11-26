@@ -33,6 +33,16 @@ class SessionCreateRequest(BaseModel):
     session_id: str | None = Field(default=None, max_length=64)
 
 
+class CharacterVersionInfo(BaseModel):
+    character_id: int
+    version_id: int | None = None
+    version_no: int | None = None
+    latest_version_id: int | None = None
+    latest_version_no: int | None = None
+    can_sync: bool = False
+    name: str = ""
+
+
 class SessionDetailResponse(BaseModel):
     session_id: str
     persona: Persona
@@ -41,6 +51,7 @@ class SessionDetailResponse(BaseModel):
     score: float
     mood: MoodState
     mood_label: str
+    character: CharacterVersionInfo | None = None
 
 
 class SessionListItem(BaseModel):

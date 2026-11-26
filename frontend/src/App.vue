@@ -52,6 +52,26 @@ async function refreshSessions() {
   }
 }
 
+async function openSessionPanel() {
+  if (!activeId.value) return
+  try {
+    detail.value = await api.getSession(activeId.value)
+  } catch {
+    /* 打不开就用缓存 */
+  }
+  sessionPanelOpen.value = true
+}
+
+async function onCharacterSynced() {
+  if (!activeId.value) return
+  try {
+    detail.value = await api.getSession(activeId.value)
+    chatKey.value += 1
+  } catch (e) {
+    error.value = e.message || '刷新会话失败'
+  }
+}
+
 async function openSession(sessionId) {
   if (!sessionId) return
   error.value = ''
@@ -217,7 +237,7 @@ onMounted(() => {
         :detail="detail"
         :name="activeSession?.name || detail?.persona?.name || '小柔'"
         :avatar="activeSession?.avatar || detail?.persona?.avatar || ''"
-        @session-settings="sessionPanelOpen = true"
+        @session-settings="openSessionPanel"
         @sent="onSent"
         @trace="openTrace"
         @back="activeId = ''"
@@ -242,6 +262,7 @@ onMounted(() => {
       @close="sessionPanelOpen = false"
       @persona="onPersonaChanged"
       @reset="onReset"
+      @synced="onCharacterSynced"
     />
 
     <SettingsDrawer v-if="settingsOpen" @close="settingsOpen = false" />

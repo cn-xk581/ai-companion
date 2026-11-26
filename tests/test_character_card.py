@@ -151,3 +151,45 @@ def test_only_creator_can_export():
             f"/api/v1/characters/{cid}/export.json", headers=_headers(other["access_token"])
         )
         assert denied.status_code == 403
+def test_edit_creates_new_version_and_session_can_sync():
+    with _client() as client:
+        body = _register(client)
+        headers = _headers(body["access_token"])
+        imported = client.post(
+            "/api/v1/characters/import",
+            files={"file": ("card.json", FIXTURE.read_bytes(), "application/json")},
+            headers=headers,
+        )
+        cid = imported.json()["character"]["character_id"]
+        sid = client.post(f"/api/v1/characters/{cid}/sessions", headers=headers).json()["session_id"]
+
+        detail = client.get(f"/api/v1/sessions/{sid}", headers=headers).json()
+        assert detail["character"]["version_no"] == 1
+        assert detail["character"]["can_sync"] is False
+
+        created = client.post(
+            f"/api/v1/characters/{cid}/versions",
+            json={
+                "persona": {"personality": "新版性格：更直接"},
+                "greeting": "新版开场白",
+                "change_note": "调整性格与开场",
+            },
+            headers=headers,
+        )
+        assert created.status_code == 200, created.text
+        assert created.json()["version"]["version_no"] == 2
+
+        detail = client.get(f"/api/v1/sessions/{sid}", headers=headers).json()
+        assert detail["character"]["version_no"] == 1
+        assert detail["character"]["latest_version_no"] == 2
+        assert detail["character"]["can_sync"] is True
+
+        synced = client.post(f"/api/v1/sessions/{sid}/sync-character", headers=headers)
+        assert synced.status_code == 200
+        detail = client.get(f"/api/v1/sessions/{sid}", headers=headers).json()
+        assert detail["character"]["version_no"] == 2
+        assert detail["character"]["can_sync"] is False
+        assert detail["persona"]["personality"] == "新版性格：更直接"
+
+        exported = client.get(f"/api/v1/characters/{cid}/export.json", headers=headers).json()
+        assert exported["data"]["first_mes"] == "新版开场白"

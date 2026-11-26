@@ -2,6 +2,7 @@
 import { onMounted, ref } from 'vue'
 import { api, downloadCharacterFile, importCharacter } from '../api'
 import { PRESETS } from '../presets'
+import CharacterEditor from './CharacterEditor.vue'
 
 const props = defineProps({
   creating: { type: String, default: '' },
@@ -13,6 +14,7 @@ const loading = ref(false)
 const error = ref('')
 const busy = ref('')
 const fileInput = ref(null)
+const editing = ref(null)
 
 async function load() {
   loading.value = true
@@ -78,6 +80,15 @@ async function remove(c) {
   }
 }
 
+function edit(c) {
+  editing.value = c.character_id
+}
+
+async function onEdited() {
+  editing.value = null
+  await load()
+}
+
 function tagList(c) {
   return (c.tags || []).slice(0, 4)
 }
@@ -131,6 +142,7 @@ onMounted(load)
             <button class="mini mini--primary" :disabled="!!creating" @click="start(c)">
               {{ creating === 'c' + c.character_id ? '开启中…' : '开始聊天' }}
             </button>
+            <button class="mini" :disabled="busy !== ''" @click="edit(c)">编辑</button>
             <button class="mini" :disabled="busy !== ''" @click="download(c, 'png')">PNG</button>
             <button class="mini" :disabled="busy !== ''" @click="download(c, 'json')">JSON</button>
             <button class="mini mini--danger" :disabled="busy !== ''" @click="remove(c)">删除</button>
@@ -161,6 +173,12 @@ onMounted(load)
         </span>
       </button>
     </div>
+    <CharacterEditor
+    v-if="editing"
+    :character-id="editing"
+    @close="editing = null"
+    @saved="onEdited"
+  />
   </section>
 </template>
 

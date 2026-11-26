@@ -7,7 +7,7 @@ const props = defineProps({
   sessionId: { type: String, required: true },
   detail: { type: Object, default: null },
 })
-const emit = defineEmits(['close', 'persona', 'reset'])
+const emit = defineEmits(['close', 'persona', 'reset', 'synced'])
 
 const TABS = [
   { id: 'persona', label: '人设' },
@@ -108,6 +108,20 @@ async function resetSession() {
   }
 }
 
+async function syncCharacter() {
+  if (!props.detail?.character?.can_sync) return
+  busy.value = 'sync'
+  msg.value = ''
+  try {
+    await api.syncSessionCharacter(props.sessionId)
+    emit('synced')
+  } catch (e) {
+    msg.value = e.message || '同步失败'
+  } finally {
+    busy.value = ''
+  }
+}
+
 onMounted(load)
 </script>
 
@@ -140,6 +154,22 @@ onMounted(load)
 
       <div class="panel__body">
         <p v-if="msg" class="msg">{{ msg }}</p>
+
+        <div v-if="detail?.character" class="ver">
+          <div class="ver__text">
+            角色版本 <b class="num">v{{ detail.character.version_no ?? '?' }}</b>
+            <template v-if="detail.character.can_sync">
+              · 最新 <b class="num">v{{ detail.character.latest_version_no }}</b>
+            </template>
+          </div>
+          <button
+            class="btn btn--quiet btn--sm"
+            :disabled="!detail.character.can_sync || busy === 'sync'"
+            @click="syncCharacter"
+          >
+            {{ busy === 'sync' ? '同步中…' : detail.character.can_sync ? '同步到最新版本' : '已是最新' }}
+          </button>
+        </div>
 
         <!-- 人设：只影响当前会话 -->
         <template v-if="tab === 'persona'">
@@ -283,6 +313,21 @@ onMounted(load)
   color: var(--text-2);
 }
 .dot { width: 1px; height: 10px; background: var(--line); }
+.ver {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 14px;
+  padding: 9px 12px;
+  border-radius: var(--r-tight);
+  background: var(--panel-2);
+  box-shadow: inset 0 0 0 1px var(--line);
+  font-size: var(--step--1);
+  color: var(--text-2);
+}
+.ver__text b { color: var(--text); font-weight: 500; }
+
 .tabs {
   display: flex;
   gap: 14px;

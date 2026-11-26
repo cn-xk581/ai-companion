@@ -224,6 +224,73 @@ class CharacterService:
             "name": char.name,
         }
 
+    async def update_meta(self, user_id: int, character_id: int, fields: dict[str, Any]) -> CharacterRecord:
+        await self.require_owned(user_id, character_id)
+        allowed = {
+            k: v
+            for k, v in fields.items()
+            if v is not None and k in ("name", "nickname", "summary", "tags", "visibility", "status")
+        }
+        if "name" in allowed and not str(allowed["name"]).strip():
+            raise ValueError("角色名不能为空")
+        updated = await self.store.update(character_id, **allowed)
+        return updated or await self.require_owned(user_id, character_id)
+
+    async def add_version(self, user_id: int, character_id: int, payload: dict[str, Any]) -> VersionRecord:
+        char = await self.require_owned(user_id, character_id)
+        current = await self.store.get_current_version(character_id)
+        persona = dict(current.persona) if current else {"name": char.name}
+        incoming = payload.get("persona") or {}
+        allowed = {
+            "name", "nickname", "description", "personality", "scenario",
+            "system_prompt", "post_history_instructions", "creator_notes",
+            "creator", "character_version", "tags", "mes_example",
+            "group_only_greetings", "extensions",
+        }
+        for key in allowed:
+            if key in incoming and incoming[key] is not None:
+                persona[key] = incoming[key]
+        name = str(persona.get("name") or char.name).strip()
+        if not name:
+            raise ValueError("角色名不能为空")
+        persona["name"] = name
+
+        greeting = payload.get("greeting")
+        if greeting is None:
+            greeting = current.greeting if current else ""
+        alt = payload.get("alternate_greetings")
+        if alt is None:
+            alt = list(current.alternate_greetings) if current else []
+        samples = payload.get("dialogue_samples")
+        if samples is None:
+            samples = list(current.dialogue_samples) if current else []
+        raw = dict(current.raw_card) if current else {}
+
+        description = str(persona.get("description") or "")
+        version = await self.store.add_version(
+            character_id=character_id,
+            persona=persona,
+            greeting=greeting or "",
+            alternate_greetings=list(alt or []),
+            dialogue_samples=list(samples or []),
+            raw_card=raw,
+            card_file_key=current.card_file_key if current else "",
+            card_file_url=current.card_file_url if current else "",
+            change_note=(payload.get("change_note") or "")[:255],
+            audit_status=2,
+            created_by=user_id,
+        )
+        if payload.get("publish", True):
+            await self.store.set_current_version(character_id, version.id)
+            await self.store.update(
+                character_id,
+                name=name[:64],
+                nickname=str(persona.get("nickname") or "")[:64],
+                summary=(" ".join(description.split())[:180]),
+                tags=list(persona.get("tags") or []),
+            )
+        return version
+
     # ---------------- 内部 ----------------
 
     def _make_avatar(self, png: bytes) -> bytes | None:

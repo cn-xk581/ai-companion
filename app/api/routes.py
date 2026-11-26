@@ -14,6 +14,7 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Request
 from fastapi.responses import StreamingResponse
 
 from app.api.schemas import (
+    CharacterVersionInfo,
     AgentListResponse,
     ChatRequest,
     ChatResponse,
@@ -160,7 +161,7 @@ async def session_detail(
         raise HTTPException(status_code=404, detail=str(exc))
     except SessionOwnershipError as exc:
         raise HTTPException(status_code=403, detail=str(exc))
-    return _detail(record)
+    return _detail(record, await _character_info(request, record))
 
 
 @router.post("/sessions/{session_id}/sync-character")
@@ -418,7 +419,31 @@ async def health(request: Request):
     )
 
 
-def _detail(record) -> SessionDetailResponse:
+async def _character_info(request, record) -> CharacterVersionInfo | None:
+    if not record.character_id:
+        return None
+    store = request.app.state.characters
+    char = await store.get(record.character_id)
+    if char is None:
+        return None
+    latest = await store.get_current_version(char.id)
+    current = (
+        await store.get_version(record.character_version_id)
+        if record.character_version_id
+        else None
+    )
+    return CharacterVersionInfo(
+        character_id=char.id,
+        version_id=current.id if current else None,
+        version_no=current.version_no if current else None,
+        latest_version_id=latest.id if latest else None,
+        latest_version_no=latest.version_no if latest else None,
+        can_sync=bool(latest and latest.id != (current.id if current else None)),
+        name=char.name,
+    )
+
+
+def _detail(record, character: CharacterVersionInfo | None = None) -> SessionDetailResponse:
     return SessionDetailResponse(
         session_id=record.session_id,
         persona=record.persona,
@@ -427,6 +452,7 @@ def _detail(record) -> SessionDetailResponse:
         score=round(record.score, 1),
         mood=record.mood,
         mood_label=MOOD_LABELS.get(record.mood.current_mood, record.mood.current_mood),
+        character=character,
     )
 
 

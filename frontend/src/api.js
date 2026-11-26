@@ -152,11 +152,14 @@ export const api = {
     }),
 
   myCharacters: () => request('/characters/mine'),
-  getCharacter: (id) => request(/characters/ + id),
-  deleteCharacter: (id) => request(/characters/ + id, { method: 'DELETE' }),
-  createCharacterSession: (id) => request(/characters/ + id + '/sessions', { method: 'POST' }),
+  getCharacter: (id) => request(`/characters/${id}`),
+  deleteCharacter: (id) => request(`/characters/${id}`, { method: 'DELETE' }),
+  updateCharacter: (id, body) => request(`/characters/${id}`, { method: 'PUT', body }),
+  createCharacterVersion: (id, body) =>
+    request(`/characters/${id}/versions`, { method: 'POST', body }),
+  createCharacterSession: (id) => request(`/characters/${id}/sessions`, { method: 'POST' }),
   syncSessionCharacter: (sessionId) =>
-    request(/sessions/ + encodeURIComponent(sessionId) + '/sync-character', { method: 'POST' }),
+    request(`/sessions/${encodeURIComponent(sessionId)}/sync-character`, { method: 'POST' }),
 
   listMemories: () => request('/memories'),
   deleteMemory: (memoryId) => request(`/memories/${encodeURIComponent(memoryId)}`, { method: 'DELETE' }),

@@ -5,12 +5,30 @@ from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, File, HTTPException, Request, Response, UploadFile, status
 from fastapi.responses import JSONResponse
+from pydantic import BaseModel, Field
 
 from app.auth.deps import AuthUser, get_current_user
 from app.domain.character_card import CardParseError
-from app.services.character_service import CharacterService
+from app.services.character_service import CharacterService, _version_public
 
 router = APIRouter(prefix="/api/v1/characters", tags=["characters"])
+
+
+class CharacterUpdate(BaseModel):
+    name: str | None = Field(default=None, max_length=64)
+    nickname: str | None = Field(default=None, max_length=64)
+    summary: str | None = Field(default=None, max_length=512)
+    tags: list[str] | None = None
+    visibility: int | None = Field(default=None, ge=1, le=3)
+
+
+class VersionCreate(BaseModel):
+    persona: dict = Field(default_factory=dict)
+    greeting: str | None = None
+    alternate_greetings: list[str] | None = None
+    dialogue_samples: list[dict] | None = None
+    change_note: str = Field(default="", max_length=255)
+    publish: bool = True
 
 
 def _service(request: Request) -> CharacterService:
@@ -49,6 +67,36 @@ async def my_characters(request: Request, user: AuthUser = Depends(get_current_u
     service = _service(request)
     rows = await service.list_mine(user.user_id)
     return {"characters": [c.public() for c in rows]}
+
+
+@router.put("/{character_id}")
+async def update_character(
+    character_id: int,
+    body: CharacterUpdate,
+    request: Request,
+    user: AuthUser = Depends(get_current_user),
+):
+    service = _service(request)
+    try:
+        char = await service.update_meta(user.user_id, character_id, body.model_dump(exclude_none=True))
+    except Exception as exc:  # noqa: BLE001
+        raise _map_error(exc)
+    return {"character": char.public()}
+
+
+@router.post("/{character_id}/versions")
+async def create_version(
+    character_id: int,
+    body: VersionCreate,
+    request: Request,
+    user: AuthUser = Depends(get_current_user),
+):
+    service = _service(request)
+    try:
+        version = await service.add_version(user.user_id, character_id, body.model_dump(exclude_none=True))
+    except Exception as exc:  # noqa: BLE001
+        raise _map_error(exc)
+    return {"version": _version_public(version)}
 
 
 @router.get("/{character_id}")
