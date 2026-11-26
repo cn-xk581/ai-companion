@@ -122,6 +122,21 @@ class Settings(BaseSettings):
     avatar_size: int = 512
     avatar_quality: int = 85
 
+    # ---- 角色卡 / 对象存储 ----
+    storage_backend: str = "local"        # local | s3（阿里云 OSS/COS/MinIO 均兼容 S3）
+    storage_public_prefix: str = "/media"
+    card_max_png_mb: int = 10
+    card_max_json_mb: int = 2
+    character_avatar_size: int = 256
+    character_avatar_quality: int = 80
+    s3_endpoint: str = ""
+    s3_bucket: str = ""
+    s3_region: str = ""
+    s3_access_key_id: str = ""
+    s3_access_key_secret: str = ""
+    s3_public_base_url: str = ""
+    s3_prefix: str = "characters"
+
     # ---- 运维接口 ----
     admin_token: str = ""  # 空 => 运维接口关闭（403），生产必须显式配置
 

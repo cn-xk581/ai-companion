@@ -85,6 +85,8 @@ class SessionRecord:
     stage: RelationshipStage = RelationshipStage.STRANGER
     score: float = 0.0
     mood: MoodState = field(default_factory=MoodState)
+    character_id: int | None = None
+    character_version_id: int | None = None
     created_at: datetime | None = None
     updated_at: datetime | None = None
 
@@ -478,6 +480,8 @@ class SessionRow(Base):
 
     session_id: Mapped[str] = mapped_column(String(64), primary_key=True)
     user_id: Mapped[int] = mapped_column(BigInteger, index=True)
+    character_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True, index=True)
+    character_version_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
     persona: Mapped[dict] = mapped_column(JSON, default=dict)
     stage: Mapped[str] = mapped_column(String(32), default="stranger")
     score: Mapped[float] = mapped_column(Float, default=0.0)
@@ -567,6 +571,10 @@ class PostgresRepository(Repository):
             database_url, echo=echo, connect_args=connect_args
         )
         self._session_factory = async_sessionmaker(self._engine, expire_on_commit=False)
+
+    @property
+    def engine(self) -> AsyncEngine:
+        return self._engine
 
     async def init_db(self) -> None:
         async with self._engine.begin() as conn:
@@ -743,6 +751,8 @@ class PostgresRepository(Repository):
             row.stage = record.stage.value
             row.score = record.score
             row.mood = record.mood.model_dump(mode="json")
+            row.character_id = record.character_id
+            row.character_version_id = record.character_version_id
             row.updated_at = now
             await session.commit()
 
@@ -969,6 +979,8 @@ def _session(row: SessionRow) -> SessionRecord:
         stage=stage,
         score=float(row.score or 0.0),
         mood=mood,
+        character_id=int(row.character_id) if row.character_id else None,
+        character_version_id=int(row.character_version_id) if row.character_version_id else None,
         created_at=row.created_at,
         updated_at=row.updated_at,
     )

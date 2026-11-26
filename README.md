@@ -218,6 +218,13 @@ cd frontend && npm install && npm run dev     # http://127.0.0.1:5173（/api 代
 | PUT | `/api/v1/users/me` | 改昵称 |
 | PUT | `/api/v1/users/me/profile` | 改资料（性别/生日/bio/tags/traits/settings，仅本人） |
 | POST | `/api/v1/users/me/avatar` | 上传头像（jpg/png ≤2MB → 512×512 webp） |
+| POST | `/api/v1/characters/import` | 导入角色卡（PNG / JSON，V1/V2/V3） |
+| GET | `/api/v1/characters/mine` | 我的角色（按 creator_id） |
+| GET | `/api/v1/characters/{id}` | 角色详情（人设/世界书/资源） |
+| GET | `/api/v1/characters/{id}/export.json` | 导出 JSON 卡（仅创作者） |
+| GET | `/api/v1/characters/{id}/export.png` | 导出 PNG 卡（内嵌 ccv3/chara） |
+| POST | `/api/v1/characters/{id}/sessions` | 用该角色当前版本开一段会话（锁定版本） |
+| POST | `/api/v1/sessions/{id}/sync-character` | 显式把会话同步到角色最新版本 |
 | POST | `/api/v1/chat` | 一轮对话（同步）；`client_msg_id` 幂等 |
 | POST | `/api/v1/chat/stream` | SSE：`meta` → `token*` → `done/error` |
 | GET/POST | `/api/v1/sessions` | 会话列表 / 创建会话 |

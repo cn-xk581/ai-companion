@@ -414,3 +414,23 @@ docker exec -i companion-postgres-1 psql -U companion -d companion -c '\dt'
 - 旧 JWT 全部失效（`sub` 从字符串改成 BIGINT 字符串形式），所有人需要重新登录；
 - 密码哈希改为 **argon2id**；旧 PBKDF2 用户若还在，登录成功时会自动升级；
 - 头像写入 `MEDIA_DIR/avatars/{user_id}.webp`，通过 `/media/...` 提供，随安装目录一起清理。
+---
+
+## 12. 角色卡功能（新表 + 会话绑定）
+
+```bash
+# 1) 补 sessions 的新列（新表由应用 create_all 自动建）
+docker exec -i companion-postgres-1 psql -U companion -d companion \
+  < deploy/migrations/002_characters.sql
+
+# 2) 重启
+sudo systemctl restart companion
+
+# 3) 验证
+docker exec -i companion-postgres-1 psql -U companion -d companion -c '\dt' | grep -E 'character|sessions'
+```
+
+- 导入：`POST /api/v1/characters/import`（multipart `file`，PNG 或 JSON，≤10MB / 2MB）
+- 导出：`/characters/{id}/export.json`、`/export.png`（仅 `creator_id` 本人）
+- 原始 PNG 走 `STORAGE_BACKEND`（默认本地 `data/media/characters/...`；配 `STORAGE_BACKEND=s3` + `S3_*` 切对象存储）
+- 会话锁版本：`sessions.character_version_id` 固定；需要跟进新版时显式调 `/sessions/{id}/sync-character`

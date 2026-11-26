@@ -163,6 +163,20 @@ async def session_detail(
     return _detail(record)
 
 
+@router.post("/sessions/{session_id}/sync-character")
+async def sync_session_character(
+    session_id: str, request: Request, user: AuthUser = Depends(get_current_user)
+):
+    """把会话的人设同步到角色当前版本（显式操作，不自动跟随）。"""
+    service = request.app.state.character_service
+    try:
+        return await service.sync_session(user.user_id, session_id)
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc))
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+
+
 @router.get("/sessions/{session_id}/history", response_model=HistoryResponse)
 async def session_history(
     session_id: str,
