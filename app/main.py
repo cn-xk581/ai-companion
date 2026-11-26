@@ -27,6 +27,11 @@ from app.api.users import router as users_router
 from app.api.characters import router as characters_router
 from app.api.memory import router as memory_router
 from app.auth.routes import router as auth_router
+from app.services.character_service import CharacterService
+from app.services.memory_service import MemoryService
+from app.storage.character_store import create_character_store
+from app.storage.object_store import create_storage
+from app.storage.relation_store import create_relation_store
 from app.config import Settings, get_settings
 from app.core.checkpointing import open_checkpointer
 from app.core.retry import policy_from_settings
@@ -158,17 +163,12 @@ async def lifespan(app: FastAPI):
         app.state.ctx = ctx
         app.state.graph = graph
         app.state.chat = ChatService(ctx, graph, checkpoint.describe())
-        from app.services.character_service import CharacterService
-        from app.storage.character_store import create_character_store
-        from app.storage.object_store import create_storage
 
         app.state.characters = create_character_store(repo)
         app.state.storage = create_storage(settings)
         app.state.character_service = CharacterService(
             ctx, app.state.characters, app.state.storage, app.state.chat
         )
-        from app.services.memory_service import MemoryService
-        from app.storage.relation_store import create_relation_store
 
         app.state.relations = create_relation_store(repo)
         app.state.memory = MemoryService(ctx, app.state.relations)
