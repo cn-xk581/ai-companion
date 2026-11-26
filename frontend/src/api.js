@@ -164,8 +164,10 @@ export const api = {
     request(`/sessions/${encodeURIComponent(sessionId)}/sync-character`, { method: 'POST' }),
 
   listMemories: () => request('/memories'),
-  getSessionMemory: (sessionId) =>
-    request(`/sessions/${encodeURIComponent(sessionId)}/memory`),
+  getSessionMemory: (sessionId, q = '') =>
+    request(`/sessions/${encodeURIComponent(sessionId)}/memory?q=${encodeURIComponent(q)}`),
+  updateSessionRelation: (sessionId, body) =>
+    request(`/sessions/${encodeURIComponent(sessionId)}/relation`, { method: 'PATCH', body }),
   updateMemoryFact: (id, body) => request(`/memory/facts/${id}`, { method: 'PATCH', body }),
   deleteMemoryFact: (id) => request(`/memory/facts/${id}`, { method: 'DELETE' }),
   updateMemoryEpisode: (id, body) =>

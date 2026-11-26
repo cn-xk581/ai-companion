@@ -177,6 +177,12 @@ class RelationStore(ABC):
     async def decay_affinity(self, per_day: int = 1) -> int: ...
 
     @abstractmethod
+    async def list_relations(self, user_id: int | None = None) -> list[Relation]: ...
+
+    @abstractmethod
+    async def archive_pending_facts(self, stale_before: datetime) -> int: ...
+
+    @abstractmethod
     async def clear_relation_memories(self, relation_id: int) -> int: ...
 
 
@@ -355,6 +361,20 @@ class InMemoryRelationStore(RelationStore):
     async def save_summary(self, summary: SessionSummary) -> None:
         summary.updated_at = now()
         self._summaries[summary.session_id] = summary
+
+    async def list_relations(self, user_id: int | None = None) -> list[Relation]:
+        rows = list(self._relations.values())
+        if user_id is not None:
+            rows = [r for r in rows if r.user_id == int(user_id)]
+        return rows
+
+    async def archive_pending_facts(self, stale_before: datetime) -> int:
+        count = 0
+        for fact in self._facts.values():
+            if fact.status == FACT_PENDING and (fact.created_at or datetime.now(timezone.utc)) < stale_before:
+                fact.status = FACT_ARCHIVED
+                count += 1
+        return count
 
     async def decay_affinity(self, per_day: int = 1) -> int:
         cutoff = datetime.now(timezone.utc) - timedelta(days=1)
@@ -610,6 +630,24 @@ class PostgresRelationStore(RelationStore):
             row.token_estimate = summary.token_estimate
             row.updated_at = now()
             await session.commit()
+
+    async def list_relations(self, user_id: int | None = None) -> list[Relation]:
+        async with self._factory() as session:
+            stmt = select(RelationRow)
+            if user_id is not None:
+                stmt = stmt.where(RelationRow.user_id == int(user_id))
+            rows = (await session.execute(stmt)).scalars().all()
+        return [_relation(r) for r in rows]
+
+    async def archive_pending_facts(self, stale_before: datetime) -> int:
+        async with self._factory() as session:
+            result = await session.execute(
+                update(FactRow)
+                .where(FactRow.status == FACT_PENDING, FactRow.created_at < stale_before)
+                .values(status=FACT_ARCHIVED, updated_at=now())
+            )
+            await session.commit()
+            return int(result.rowcount or 0)
 
     async def decay_affinity(self, per_day: int = 1) -> int:
         cutoff = datetime.now(timezone.utc) - timedelta(days=1)

@@ -181,8 +181,7 @@ async def lifespan(app: FastAPI):
             while True:
                 await _asyncio.sleep(24 * 3600)
                 try:
-                    await app.state.memory.archive_daily()
-                    await app.state.memory.affinity_decay()
+                    await app.state.memory.daily_maintenance()
                 except Exception as exc:  # noqa: BLE001
                     logger.warning("memory janitor failed: %s", exc)
 

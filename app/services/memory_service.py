@@ -8,6 +8,7 @@ import re
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
+from app.domain.memory import MemoryItem
 from app.domain.relations import (
     EP_ACTIVE,
     FACT_ACTIVE,
@@ -85,6 +86,14 @@ class MemoryService:
 
     async def recall(self, relation_id: int, session_id: str, query: str, limit: int = 12) -> list[str]:
         lines: list[str] = []
+        relation = await self.store.get_relation(relation_id)
+        if relation is not None and (relation.user_nickname or relation.user_persona_override):
+            bits = []
+            if relation.user_nickname:
+                bits.append(f"TA 叫你「{relation.user_nickname}」")
+            if relation.user_persona_override:
+                bits.append(f"你在这段关系里的身份：{relation.user_persona_override}")
+            lines.append("；".join(bits))
         summary = await self.store.get_summary(session_id)
         if summary and summary.summary:
             lines.append(f"上次聊到：{summary.summary[:240]}")
@@ -97,9 +106,21 @@ class MemoryService:
 
         query_vec = await self._embed_query(query)
         episodes = await self.store.list_episodes(relation_id, limit=80)
+        semantic: dict[int, float] = {}
+        vector_store = getattr(self.ctx, "vector_store", None)
+        if vector_store is not None and query_vec:
+            try:
+                hits = await vector_store.search(
+                    f"rel:{relation_id}:episodes", query_vec, top_k=20, threshold=0.0
+                )
+                semantic = {int(memory.id): score for memory, score in hits if str(memory.id).isdigit()}
+            except Exception:  # noqa: BLE001
+                semantic = {}
         scored = []
         for ep in episodes:
-            relevance = _cosine(query_vec, ep.embedding) if query_vec and ep.embedding else 0.0
+            relevance = semantic.get(ep.id, 0.0)
+            if not relevance and query_vec and ep.embedding:
+                relevance = _cosine(query_vec, ep.embedding)
             score = retention_score(
                 importance=ep.importance,
                 pinned=ep.is_pinned,
@@ -290,17 +311,35 @@ class MemoryService:
             except Exception:  # noqa: BLE001
                 embeddings = []
         for idx, item in enumerate(episode_items):
-            await self.store.add_episode(
+            summary = str(item["summary"]).strip()
+            importance = int(item.get("importance", 3))
+            embedding = embeddings[idx] if idx < len(embeddings) else []
+            episode = await self.store.add_episode(
                 relation_id=relation_id,
                 session_id=session_id,
                 kind=str(item.get("kind") or "event"),
-                summary=str(item["summary"]).strip(),
+                summary=summary,
                 emotion_tag=str(item.get("emotion_tag") or ""),
-                importance=int(item.get("importance", 3)),
+                importance=importance,
                 happened_at=item.get("happened_at") or now(),
                 source_msg_id=item.get("source_msg_id"),
-                embedding=embeddings[idx] if idx < len(embeddings) else [],
+                embedding=embedding,
             )
+            vector_store = getattr(self.ctx, "vector_store", None)
+            if vector_store is not None and embedding:
+                try:
+                    await vector_store.upsert(
+                        f"rel:{relation_id}:episodes",
+                        MemoryItem(
+                            id=str(episode.id),
+                            content=summary,
+                            importance=min(1.0, importance / 10),
+                            category="episode",
+                        ),
+                        embedding,
+                    )
+                except Exception:  # noqa: BLE001
+                    pass
             saved_episodes += 1
         return {"facts": saved_facts, "episodes": saved_episodes, "skipped": skipped}
 
@@ -420,13 +459,65 @@ class MemoryService:
 
     # ---------------- 归档 / 遗忘 ----------------
 
+    async def compress_episodes(self, relation_id: int, threshold: int = 200) -> int:
+        episodes = await self.store.list_episodes(relation_id, limit=1000)
+        candidates = [
+            e for e in episodes if e.status == 1 and not e.is_pinned and e.kind != "memoir"
+        ]
+        if len(candidates) <= threshold:
+            return 0
+        groups: dict[str, list] = {}
+        for ep in candidates:
+            key = (ep.happened_at or datetime.now(timezone.utc)).strftime("%Y-%m")
+            groups.setdefault(key, []).append(ep)
+        merged = 0
+        for month, items in groups.items():
+            if len(items) < 5:
+                continue
+            text = "；".join(e.summary[:60] for e in items[:30])
+            importance = max(e.importance for e in items)
+            memoir = await self.store.add_episode(
+                relation_id=relation_id,
+                session_id="",
+                kind="memoir",
+                summary=f"{month} 的回忆：{text}"[:800],
+                importance=min(10, importance),
+                happened_at=min(e.happened_at or datetime.now(timezone.utc) for e in items),
+            )
+            for ep in items:
+                await self.store.update_episode(ep.id, status=2)
+            merged += len(items)
+        return merged
+
+    async def daily_maintenance(self) -> dict[str, int]:
+        archived = await self.archive_daily()
+        decayed = await self.affinity_decay()
+        pending = await self.store.archive_pending_facts(
+            datetime.now(timezone.utc) - timedelta(days=30)
+        )
+        compressed = 0
+        for relation in await self.store.list_relations():
+            compressed += await self.compress_episodes(relation.id)
+        return {
+            "archived": archived,
+            "decayed": decayed,
+            "pending_archived": pending,
+            "compressed": compressed,
+        }
+
     async def archive_daily(self, stale_days: int = 14, max_importance: int = 3) -> int:
         cutoff = datetime.now(timezone.utc) - timedelta(days=stale_days)
         return await self.store.archive_episodes(cutoff, max_importance=max_importance)
 
-    async def grouped(self, relation_id: int, session_id: str) -> dict[str, Any]:
+    async def grouped(self, relation_id: int, session_id: str, query: str = "") -> dict[str, Any]:
         facts = await self.store.list_facts(relation_id)
         episodes = await self.store.list_episodes(relation_id, limit=100)
+        needle = (query or "").strip().lower()
+        if needle:
+            facts = [f for f in facts if needle in f.fact_value.lower()]
+            episodes = [
+                e for e in episodes if needle in e.summary.lower() or needle in (e.emotion_tag or "").lower()
+            ]
         summary = await self.store.get_summary(session_id)
         return {
             "facts": [

@@ -24,6 +24,8 @@ const loading = ref(false)
 const saving = ref(false)
 const busy = ref('')
 const msg = ref('')
+const memQuery = ref('')
+const relationForm = ref({ nickname: '', override: '' })
 
 const stage = computed(() => props.detail?.stage || 'stranger')
 const mood = computed(() => props.detail?.mood?.current_mood || 'neutral')
@@ -41,6 +43,12 @@ async function load() {
       episodes: memRes.episodes || [],
       summary: memRes.summary || '',
       relation: memRes.relation || null,
+    }
+    if (memRes.relation) {
+      relationForm.value = {
+        nickname: memRes.relation.user_nickname || '',
+        override: memRes.relation.user_persona_override || '',
+      }
     }
     skills.value = skillRes.skills || []
     stats.value = skillRes.stats || null
@@ -188,6 +196,24 @@ async function syncCharacter() {
   }
 }
 
+let memTimer = null
+function onMemSearch() {
+  if (memTimer) clearTimeout(memTimer)
+  memTimer = setTimeout(load, 300)
+}
+
+async function saveRelation() {
+  try {
+    await api.updateSessionRelation(props.sessionId, {
+      user_nickname: relationForm.value.nickname,
+      user_persona_override: relationForm.value.override,
+    })
+    msg.value = '关系设定已保存'
+  } catch (e) {
+    msg.value = e.message || '保存失败'
+  }
+}
+
 onMounted(load)
 </script>
 
@@ -239,6 +265,13 @@ onMounted(load)
 
         <!-- 人设：只影响当前会话 -->
         <template v-if="tab === 'persona'">
+          <div class="rel-box">
+            <p class="field-label">TA 对你的称呼</p>
+            <input v-model="relationForm.nickname" class="field" maxlength="32" placeholder="如：笨蛋、阿瑾" />
+            <p class="field-label">你在这个角色面前的身份</p>
+            <textarea v-model="relationForm.override" class="field" rows="2" maxlength="500" placeholder="如：我是你的青梅竹马 / 转校生" />
+            <button class="btn btn--quiet btn--full" @click="saveRelation">保存关系设定</button>
+          </div>
           <p class="lead">这些只对当前这段关系生效，改完下一句就按新人设说话。</p>
           <label class="row">
             <span class="field-label">名字</span>
@@ -295,6 +328,10 @@ onMounted(load)
         <template v-else-if="tab === 'memory'">
           <p v-if="loading" class="hint">读取中…</p>
           <template v-else>
+            <div class="search">
+              <input v-model="memQuery" class="field" type="search" placeholder="搜索记忆…" @input="onMemSearch" />
+            </div>
+
             <div v-if="memoryData.relation" class="ver">
               <div class="ver__text">
                 好感 <b class="num">{{ memoryData.relation.affinity_score }}</b>
@@ -412,6 +449,18 @@ onMounted(load)
   color: var(--text-2);
 }
 .dot { width: 1px; height: 10px; background: var(--line); }
+.rel-box {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 16px;
+  padding: 10px 12px;
+  border-radius: var(--r-tight);
+  background: var(--panel-2);
+  box-shadow: inset 0 0 0 1px var(--line);
+}
+.rel-box .btn { margin-top: 4px; }
+
 .mem-title {
   margin: 18px 0 8px;
   font-size: var(--step-0);

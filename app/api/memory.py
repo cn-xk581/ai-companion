@@ -56,10 +56,13 @@ async def _owned_episode(request: Request, user: AuthUser, episode_id: int):
 
 @router.get("/sessions/{session_id}/memory")
 async def session_memory(
-    session_id: str, request: Request, user: AuthUser = Depends(get_current_user)
+    session_id: str,
+    request: Request,
+    q: str = "",
+    user: AuthUser = Depends(get_current_user),
 ):
     relation = await _owned_relation(request, user, session_id)
-    data = await request.app.state.memory.grouped(relation.id, session_id)
+    data = await request.app.state.memory.grouped(relation.id, session_id, q)
     return {
         "relation": {
             "id": relation.id,
@@ -75,6 +78,29 @@ async def session_memory(
         },
         **data,
     }
+
+
+class RelationUpdate(BaseModel):
+    user_nickname: str | None = Field(default=None, max_length=32)
+    user_persona_override: str | None = Field(default=None, max_length=500)
+
+
+@router.patch("/sessions/{session_id}/relation")
+async def update_relation(
+    session_id: str,
+    body: RelationUpdate,
+    request: Request,
+    user: AuthUser = Depends(get_current_user),
+):
+    relation = await _owned_relation(request, user, session_id)
+    fields = {}
+    if body.user_nickname is not None:
+        fields["user_nickname"] = body.user_nickname.strip()[:32]
+    if body.user_persona_override is not None:
+        fields["user_persona_override"] = body.user_persona_override.strip()[:500]
+    if fields:
+        await request.app.state.relations.update_relation(relation.id, **fields)
+    return {"ok": True}
 
 
 @router.patch("/memory/facts/{fact_id}")

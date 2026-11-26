@@ -253,3 +253,86 @@ def test_affinity_decay_per_day():
         assert refreshed.affinity_score == 7
 
     asyncio.run(run())
+
+def test_episode_compression_creates_memoir():
+    async def run():
+        repo = InMemoryRepository()
+        await _session(repo)
+        service, store = _service(repo)
+        relation = await service.relation_for_session(1, "s1")
+        for i in range(210):
+            await store.add_episode(
+                relation_id=relation.id,
+                session_id="s1",
+                kind="event",
+                summary=f"小事 {i}",
+                importance=2,
+            )
+        merged = await service.compress_episodes(relation.id, threshold=200)
+        assert merged == 210
+        active = await store.list_episodes(relation.id)
+        assert len(active) == 1
+        assert active[0].kind == "memoir"
+        assert "的回忆" in active[0].summary
+
+    asyncio.run(run())
+
+
+def test_pending_facts_archived_after_30_days():
+    async def run():
+        repo = InMemoryRepository()
+        await _session(repo)
+        service, store = _service(repo)
+        relation = await service.relation_for_session(1, "s1")
+        fact = await store.add_fact(
+            relation_id=relation.id,
+            category="profile",
+            fact_key="maybe",
+            fact_value="可能对芒果过敏",
+            status=0,
+        )
+        old = datetime.now(timezone.utc) - timedelta(days=40)
+        await store.update_fact(fact.id, created_at=old)
+        archived = await store.archive_pending_facts(datetime.now(timezone.utc) - timedelta(days=30))
+        assert archived == 1
+        refreshed = await store.get_fact(fact.id)
+        assert refreshed.status == 3
+
+    asyncio.run(run())
+
+
+def test_memory_grouped_search_filters():
+    async def run():
+        repo = InMemoryRepository()
+        await _session(repo)
+        service, _ = _service(repo)
+        relation = await service.relation_for_session(1, "s1")
+        await service.remember(
+            relation.id,
+            "s1",
+            facts=[
+                {"category": "taboo", "key": "allergy", "value": "芒果过敏"},
+                {"category": "profile", "key": "birthday", "value": "3 月 2 日"},
+            ],
+        )
+        data = await service.grouped(relation.id, "s1", "芒果")
+        assert len(data["facts"]) == 1
+        assert "芒果" in data["facts"][0]["content"]
+
+    asyncio.run(run())
+
+
+def test_relation_persona_is_in_recall():
+    async def run():
+        repo = InMemoryRepository()
+        await _session(repo)
+        service, store = _service(repo)
+        relation = await service.relation_for_session(1, "s1")
+        await store.update_relation(
+            relation.id, user_nickname="小笨蛋", user_persona_override="我是你的青梅竹马"
+        )
+        lines = await service.recall(relation.id, "s1", "你好")
+        assert any("小笨蛋" in line for line in lines)
+        assert any("青梅竹马" in line for line in lines)
+
+    asyncio.run(run())
