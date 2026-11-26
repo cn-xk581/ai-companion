@@ -135,11 +135,18 @@ def build_extract_messages(
         {
             "role": "system",
             "content": (
-                f"从这轮对话里抽取**关于用户**、值得长期记住的事实（最多 3 条）。"
-                "只输出 JSON：{\"memories\":[{\"content\":\"...\",\"importance\":0.0-1.0,"
-                "\"category\":\"fact|preference|event|anniversary|story\"}]}。\n"
-                "规则：闲聊/情绪不给记忆；不要重复用户原话；每条不超过 40 字；"
-                "没有值得记的就返回 {\"memories\":[]}。"
+                "从这轮对话里抽取**关于真实用户**的长期信息。只输出 JSON：\n"
+                '{"facts":[{"category":"profile|preference|social|taboo","key":"birthday",'
+                '"value":"...","confidence":0.0-1.0}],'
+                '"events":[{"summary":"...","emotion":"touching|conflict|funny|sad|happy",'
+                '"importance":1-10}],"affinity_delta":-3..3}\n'
+                "规则：\n"
+                "1) facts 是稳定事实/偏好（生日、过敏、宠物名、称呼、忌口），最多 3 条，key 用英文短名；\n"
+                "2) events 只记值得回味的共同经历/约定/未解决的线头，最多 2 条，summary 用第三人称不超过 60 字；\n"
+                "3) 严格区分角色扮演与真实信息：『我是秦始皇』『我中了十个亿』→ 不记；\n"
+                "4) 不要把角色人设写成用户事实；\n"
+                "5) 用户改口（以前爱吃辣、现在戒辣）要照实记录新状态，系统会覆盖旧值；\n"
+                "6) 没有可记的就返回 {\"facts\":[],\"events\":[],\"affinity_delta\":0}。"
             ),
         },
         {

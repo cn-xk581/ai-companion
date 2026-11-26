@@ -85,6 +85,7 @@ class HistoryResponse(BaseModel):
 
 class ResetRequest(BaseModel):
     clear_memories: bool = True
+    mode: str | None = None  # keep | session | all
 
 
 class ResetResponse(BaseModel):

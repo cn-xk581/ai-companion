@@ -96,22 +96,40 @@ class ChatService:
         return record
 
     async def reset_session(
-        self, session_id: str, user_id: str, *, clear_memories: bool = True
+        self,
+        session_id: str,
+        user_id: str,
+        *,
+        clear_memories: bool = True,
+        mode: str | None = None,
     ) -> dict[str, Any]:
         record = await self.require_session(session_id, user_id)
+        # keep：只清对话；session：清对话 + 这段会话的情景/摘要；all：连羁绊档案一起清
+        resolved = mode or ("session" if clear_memories else "keep")
         await self.ctx.repo.clear_messages(session_id)
         record.stage = RelationshipStage.STRANGER
         record.score = 0.0
         record.mood = MoodState()
         await self.ctx.repo.save_session(record)
         await self.ctx.cache.delete(f"session:{session_id}:snapshot")
-        if clear_memories:
+
+        memory = getattr(self.ctx, "memory", None)
+        relations = getattr(self.ctx, "relations", None)
+        if memory is not None and relations is not None and record.character_id:
+            relation = await memory.relation_for_session(user_id, session_id)
+            if relation is not None:
+                if resolved == "session":
+                    await relations.clear_session_memories(session_id)
+                elif resolved == "all":
+                    await relations.clear_relation_memories(relation.id)
+                    await relations.clear_session_memories(session_id)
+        elif resolved == "all":
             memories = await self.ctx.repo.list_memories(user_id)
             for memory in memories:
                 if self.ctx.vector_store is not None:
                     await self.ctx.vector_store.delete(user_id, memory.id)
             await self.ctx.repo.clear_memories(user_id)
-        return {"session_id": session_id, "cleared_memories": clear_memories}
+        return {"session_id": session_id, "cleared_memories": resolved != "keep", "mode": resolved}
 
     async def list_memories(self, user_id: str, session_id: str | None = None) -> list[dict[str, Any]]:
         if session_id:

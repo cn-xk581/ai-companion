@@ -17,7 +17,7 @@ const TABS = [
 
 const tab = ref('persona')
 const persona = ref({ ...(props.detail?.persona || {}) })
-const memories = ref([])
+const memoryData = ref({ facts: [], episodes: [], summary: '', relation: null })
 const skills = ref([])
 const stats = ref(null)
 const loading = ref(false)
@@ -32,8 +32,16 @@ async function load() {
   loading.value = true
   msg.value = ''
   try {
-    const [memRes, skillRes] = await Promise.all([api.listMemories(), api.listSkills()])
-    memories.value = memRes.memories || []
+    const [memRes, skillRes] = await Promise.all([
+      api.getSessionMemory(props.sessionId),
+      api.listSkills(),
+    ])
+    memoryData.value = {
+      facts: memRes.facts || [],
+      episodes: memRes.episodes || [],
+      summary: memRes.summary || '',
+      relation: memRes.relation || null,
+    }
     skills.value = skillRes.skills || []
     stats.value = skillRes.stats || null
   } catch (e) {
@@ -70,6 +78,42 @@ async function savePersona() {
   }
 }
 
+async function toggleFact(fact) {
+  try {
+    await api.updateMemoryFact(fact.id, { pinned: !fact.pinned })
+    fact.pinned = !fact.pinned
+  } catch (e) {
+    msg.value = e.message || '操作失败'
+  }
+}
+
+async function deleteFact(fact) {
+  try {
+    await api.deleteMemoryFact(fact.id)
+    memoryData.value.facts = memoryData.value.facts.filter((f) => f.id !== fact.id)
+  } catch (e) {
+    msg.value = e.message || '删除失败'
+  }
+}
+
+async function toggleEpisode(episode) {
+  try {
+    await api.updateMemoryEpisode(episode.id, { pinned: !episode.pinned })
+    episode.pinned = !episode.pinned
+  } catch (e) {
+    msg.value = e.message || '操作失败'
+  }
+}
+
+async function deleteEpisode(episode) {
+  try {
+    await api.deleteMemoryEpisode(episode.id)
+    memoryData.value.episodes = memoryData.value.episodes.filter((x) => x.id !== episode.id)
+  } catch (e) {
+    msg.value = e.message || '删除失败'
+  }
+}
+
 async function removeMemory(memory) {
   try {
     await api.deleteMemory(memory.id)
@@ -97,10 +141,21 @@ async function toggleSkill(skill) {
   }
 }
 
+async function resetAll() {
+  if (!confirm('彻底重置？会清空这段对话、与这个角色的共同记忆和事实档案，不可恢复。')) return
+  try {
+    await api.resetSession(props.sessionId, true, 'all')
+    emit('reset')
+    emit('close')
+  } catch (e) {
+    msg.value = e.message || '重置失败'
+  }
+}
+
 async function resetSession() {
   if (!confirm('重置这段关系？会清空对话、关系进度和记忆，不可恢复。')) return
   try {
-    await api.resetSession(props.sessionId, true)
+    await api.resetSession(props.sessionId, true, 'session')
     emit('reset')
     emit('close')
   } catch (e) {
@@ -221,24 +276,56 @@ onMounted(load)
           <button class="btn btn--primary btn--full" :disabled="saving" @click="savePersona">
             {{ saving ? '保存中…' : '保存人设' }}
           </button>
-          <button class="btn btn--danger btn--full reset" @click="resetSession">重置这段关系与记忆</button>
+          <button class="btn btn--quiet btn--full" @click="resetSession">清空对话（保留记忆）</button>
+          <button class="btn btn--danger btn--full reset" @click="resetAll">彻底重置（含羁绊档案）</button>
         </template>
 
-        <!-- 记忆：跨会话积累，这里只是查看/删除 -->
+        <!-- 记忆：关系档案 + 共同经历 + 会话摘要 -->
         <template v-else-if="tab === 'memory'">
-          <p class="lead">她记住的关于你的事，跨会话共享；删掉就不会再被提起。</p>
           <p v-if="loading" class="hint">读取中…</p>
-          <p v-else-if="!memories.length" class="hint">她还没记住什么。聊得越多，这里越厚。</p>
-          <ul v-else class="mem-list">
-            <li v-for="m in memories" :key="m.id" class="mem">
-              <p class="mem__text">{{ m.content }}</p>
-              <p class="mem__meta">
-                <span>{{ m.category }}</span>
-                <span class="num">重要度 {{ Math.round(m.importance * 100) }}%</span>
-                <button class="mem__del" @click="removeMemory(m)">删掉</button>
-              </p>
-            </li>
-          </ul>
+          <template v-else>
+            <div v-if="memoryData.relation" class="ver">
+              <div class="ver__text">
+                好感 <b class="num">{{ memoryData.relation.affinity_score }}</b>
+                · {{ memoryData.relation.relationship_stage }}
+                · {{ memoryData.relation.total_turns }} 轮
+                <template v-if="memoryData.relation.user_nickname">
+                  · 称呼「{{ memoryData.relation.user_nickname }}」
+                </template>
+              </div>
+            </div>
+
+            <h3 class="mem-title">关于你</h3>
+            <p v-if="!memoryData.facts.length" class="hint">还没有稳定的事实，聊到生日、忌口、称呼时会记下来。</p>
+            <ul v-else class="mem-list">
+              <li v-for="f in memoryData.facts" :key="f.id" class="mem">
+                <p class="mem__text">{{ f.content }}</p>
+                <p class="mem__meta">
+                  <span>{{ f.category }}</span>
+                  <span class="num">置信 {{ Math.round(f.confidence * 100) }}%</span>
+                  <button class="mem__del" @click="toggleFact(f)">{{ f.pinned ? '取消置顶' : '置顶' }}</button>
+                  <button class="mem__del" @click="deleteFact(f)">删掉</button>
+                </p>
+              </li>
+            </ul>
+
+            <h3 class="mem-title">和 TA 的共同记忆</h3>
+            <p v-if="!memoryData.episodes.length" class="hint">还没有值得回味的片段。</p>
+            <ul v-else class="mem-list">
+              <li v-for="e in memoryData.episodes" :key="e.id" class="mem">
+                <p class="mem__text">{{ e.summary }}</p>
+                <p class="mem__meta">
+                  <span>{{ e.emotion_tag || e.kind }}</span>
+                  <span class="num">重要度 {{ e.importance }}/10</span>
+                  <button class="mem__del" @click="toggleEpisode(e)">{{ e.pinned ? '取消置顶' : '置顶' }}</button>
+                  <button class="mem__del" @click="deleteEpisode(e)">删掉</button>
+                </p>
+              </li>
+            </ul>
+
+            <h3 class="mem-title">这段对话</h3>
+            <p class="hint">{{ memoryData.summary || '等这段对话再长一点，会自动生成摘要。' }}</p>
+          </template>
         </template>
 
         <!-- 能力：全局开关，说明清楚影响范围 -->
@@ -313,6 +400,14 @@ onMounted(load)
   color: var(--text-2);
 }
 .dot { width: 1px; height: 10px; background: var(--line); }
+.mem-title {
+  margin: 18px 0 8px;
+  font-size: var(--step-0);
+  font-weight: 500;
+  color: var(--text);
+  letter-spacing: 0.02em;
+}
+
 .ver {
   display: flex;
   align-items: center;

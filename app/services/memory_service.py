@@ -163,7 +163,14 @@ class MemoryService:
                     skipped += 1
                     continue
                 # 冲突：旧值归档，新值接管（软删除，可追溯）
-                merged = str(item.get("merged") or value)
+                merged = str(item.get("merged") or "")
+                if not merged:
+                    negative = value.startswith(("不", "没", "没有", "不再", "戒", "取消"))
+                    merged = (
+                        f"曾经{existing.fact_value}，现在{value}"
+                        if not negative
+                        else f"曾经{existing.fact_value}；现在{value}（已更正）"
+                    )
                 new_fact = await self.store.add_fact(
                     relation_id=relation_id,
                     category=category,
@@ -209,6 +216,65 @@ class MemoryService:
             )
             saved_episodes += 1
         return {"facts": saved_facts, "episodes": saved_episodes, "skipped": skipped}
+
+    async def summarize_session(self, user_id: int, session_id: str) -> str | None:
+        """把最近 40 条对话压成摘要；不足 8 条或 LLM 失败则跳过。"""
+        relation = await self.relation_for_session(user_id, session_id)
+        if relation is None:
+            return None
+        messages = await self.ctx.repo.recent_messages(session_id, 40)
+        if len(messages) < 8:
+            return None
+        from app.llm.prompts import build_summary_messages
+
+        transcript = [
+            {"role": m.role, "content": m.content}
+            for m in messages
+            if m.role in ("user", "assistant")
+        ]
+        try:
+            result = await self.ctx.llm.complete(
+                build_summary_messages(transcript), temperature=0.0, max_tokens=300
+            )
+            text = (result.content or "").strip()
+        except Exception as exc:  # noqa: BLE001 - 摘要失败不阻断
+            logger.warning("[memory] 摘要失败：%s", exc)
+            return None
+        if not text:
+            return None
+        from app.domain.relations import SessionSummary
+
+        await self.store.save_summary(
+            SessionSummary(
+                session_id=session_id,
+                summary=text[:1200],
+                covered_turns=len(transcript),
+                token_estimate=len(text),
+            )
+        )
+        return text
+
+    async def maybe_summarize(self, user_id: int, session_id: str, every: int = 12) -> None:
+        relation = await self.relation_for_session(user_id, session_id)
+        if relation is None or relation.total_turns == 0:
+            return
+        if relation.total_turns % every != 0:
+            return
+        await self.summarize_session(user_id, session_id)
+
+    async def sync_relation_state(
+        self, user_id: int, session_id: str, score: float, stage: str, mood: str
+    ) -> None:
+        relation = await self.relation_for_session(user_id, session_id)
+        if relation is None:
+            return
+        await self.store.update_relation(
+            relation.id,
+            affinity_score=max(0, min(100, int(round(score)))),
+            relationship_stage=stage,
+            current_mood=mood,
+        )
+        await self.store.touch_relation(relation.id)
 
     # ---------------- 归档 / 遗忘 ----------------
 

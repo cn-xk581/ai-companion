@@ -229,7 +229,7 @@ async def reset_session(
 ):
     _, service = _deps(request)
     try:
-        await service.reset_session(session_id, user.user_id, clear_memories=req.clear_memories)
+        await service.reset_session(session_id, user.user_id, clear_memories=req.clear_memories, mode=req.mode)
     except SessionNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc))
     except SessionOwnershipError as exc:

@@ -144,9 +144,18 @@ async def persist_node(state: dict, ctx: GraphContext) -> dict:
                 purpose="extract",
             )
             llm_calls += 1
-            items = _memory_items(extraction.data, ctx.settings.memory_extract_max)
-            if items and getattr(ctx, "memory", None) is not None:
-                await ctx.memory.remember_from_items(state["user_id"], state["session_id"], items)
+            facts, episodes = _memory_items(extraction.data, ctx.settings.memory_extract_max)
+            if (facts or episodes) and getattr(ctx, "memory", None) is not None:
+                relation = await ctx.memory.relation_for_session(
+                    state["user_id"], state["session_id"]
+                )
+                if relation is not None:
+                    await ctx.memory.remember(
+                        relation.id,
+                        state["session_id"],
+                        facts=facts,
+                        episodes=episodes,
+                    )
         except Exception as exc:  # noqa: BLE001 - 记忆失败不影响这轮对话
             logger.warning("[persist] 记忆抽取失败：%s", exc)
             warnings.append("这轮没能记住新的事（不影响回复）")
@@ -158,6 +167,7 @@ async def persist_node(state: dict, ctx: GraphContext) -> dict:
             await ctx.repo.append_message(session_id, ChatMessage(role="assistant", content=reply))
         from app.storage.postgres import SessionRecord
 
+        existing = await ctx.repo.get_session(session_id)
         await ctx.repo.save_session(
             SessionRecord(
                 session_id=session_id,
@@ -166,8 +176,18 @@ async def persist_node(state: dict, ctx: GraphContext) -> dict:
                 stage=new_stage,
                 score=round(new_score, 2),
                 mood=new_mood,
+                character_id=existing.character_id if existing else None,
+                character_version_id=existing.character_version_id if existing else None,
             )
         )
+        if getattr(ctx, "memory", None) is not None and getattr(ctx, "relations", None) is not None:
+            try:
+                await ctx.memory.sync_relation_state(
+                    user_id, session_id, new_score, new_stage.value, new_mood.current_mood
+                )
+                await ctx.memory.maybe_summarize(user_id, session_id)
+            except Exception as exc:  # noqa: BLE001 - 记忆同步失败不阻断
+                logger.warning("[memory] 关系同步/摘要失败：%s", exc)
         snapshot = json.dumps(
             {
                 "user_id": user_id,
@@ -230,7 +250,64 @@ async def persist_node(state: dict, ctx: GraphContext) -> dict:
     }
 
 
-def _memory_items(data: dict, limit: int) -> list[dict]:
+def _memory_items(data: dict, limit: int) -> tuple[list[dict], list[dict]]:
+    facts: list[dict] = []
+    for item in (data or {}).get("facts") or []:
+        value = str(item.get("value") or "").strip()
+        if len(value) < 2:
+            continue
+        facts.append(
+            {
+                "category": str(item.get("category") or "profile"),
+                "key": str(item.get("key") or value)[:64],
+                "value": value[:255],
+                "confidence": float(item.get("confidence", 0.85)),
+            }
+        )
+        if len(facts) >= limit:
+            break
+    episodes: list[dict] = []
+    for item in (data or {}).get("events") or []:
+        summary = str(item.get("summary") or "").strip()
+        if len(summary) < 2:
+            continue
+        episodes.append(
+            {
+                "kind": "event",
+                "summary": summary[:300],
+                "emotion_tag": str(item.get("emotion") or "")[:16],
+                "importance": max(1, min(10, int(item.get("importance", 3)))),
+            }
+        )
+        if len(episodes) >= limit:
+            break
+    # 兼容旧格式 {"memories":[...]}
+    for item in (data or {}).get("memories") or []:
+        content = str(item.get("content") or "").strip()
+        if len(content) < 2:
+            continue
+        category = str(item.get("category") or "fact")
+        if category in ("preference", "fact", "profile", "taboo", "social"):
+            facts.append(
+                {
+                    "category": category if category != "fact" else "profile",
+                    "key": content[:64],
+                    "value": content,
+                    "confidence": 0.7,
+                }
+            )
+        else:
+            episodes.append(
+                {
+                    "kind": "event",
+                    "summary": content,
+                    "importance": max(1, min(10, round(float(item.get("importance", 0.5)) * 10) or 3)),
+                }
+            )
+    return facts[:limit], episodes[:limit]
+
+
+def _legacy_memory_items(data: dict, limit: int) -> list[dict]:
     """校验并裁剪抽取结果：字段不合法/过短/重复的丢弃。"""
     raw = (data or {}).get("memories")
     if not isinstance(raw, list):

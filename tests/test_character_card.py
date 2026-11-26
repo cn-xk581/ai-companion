@@ -239,3 +239,72 @@ def test_search_by_name_and_tag_and_start_chat():
             f"/api/v1/characters/{cid}/export.json", headers=_headers(searcher["access_token"])
         )
         assert denied.status_code == 403
+
+def test_new_extraction_schema_maps_to_facts_and_events():
+    from app.graph.nodes.wrapup import _memory_items
+
+    facts, episodes = _memory_items(
+        {
+            "facts": [
+                {"category": "preference", "key": "food.spicy", "value": "现在戒辣了", "confidence": 0.9}
+            ],
+            "events": [{"summary": "一起淋雨", "emotion": "touching", "importance": 6}],
+            "affinity_delta": 2,
+        },
+        3,
+    )
+    assert facts[0]["key"] == "food.spicy"
+    assert facts[0]["value"] == "现在戒辣了"
+    assert episodes[0]["importance"] == 6
+    assert episodes[0]["emotion_tag"] == "touching"
+
+
+def test_reset_modes_clear_session_then_relation():
+    import asyncio
+
+    with _client() as client:
+        body = _register(client)
+        headers = _headers(body["access_token"])
+        uid = body["user"]["user_id"]
+        imported = client.post(
+            "/api/v1/characters/import",
+            files={"file": ("card.json", FIXTURE.read_bytes(), "application/json")},
+            headers=headers,
+        )
+        cid = imported.json()["character"]["character_id"]
+        sid = client.post(f"/api/v1/characters/{cid}/sessions", headers=headers).json()["session_id"]
+
+        store = app.state.relations
+
+        async def seed():
+            relation = await store.ensure_relation(uid, cid)
+            await store.add_fact(
+                relation_id=relation.id,
+                category="profile",
+                fact_key="birthday",
+                fact_value="3 月 2 日",
+            )
+            await store.add_episode(
+                relation_id=relation.id,
+                session_id=sid,
+                kind="event",
+                summary="一起淋雨",
+                importance=5,
+            )
+
+        asyncio.run(seed())
+
+        cleared = client.post(
+            f"/api/v1/sessions/{sid}/reset", json={"mode": "session"}, headers=headers
+        )
+        assert cleared.status_code == 200, cleared.text
+        memory = client.get(f"/api/v1/sessions/{sid}/memory", headers=headers).json()
+        assert memory["facts"], "本会话重置不应清事实档案"
+        assert not memory["episodes"], "本会话重置应清掉这段对话的情景"
+
+        cleared = client.post(
+            f"/api/v1/sessions/{sid}/reset", json={"mode": "all"}, headers=headers
+        )
+        assert cleared.status_code == 200
+        memory = client.get(f"/api/v1/sessions/{sid}/memory", headers=headers).json()
+        assert memory["facts"] == [] and memory["episodes"] == []

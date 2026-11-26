@@ -145,10 +145,10 @@ export const api = {
     request(`/sessions/${encodeURIComponent(id)}/history?limit=${limit}`),
   updatePersona: (id, persona) =>
     request(`/sessions/${encodeURIComponent(id)}/persona`, { method: 'PUT', body: persona }),
-  resetSession: (id, clearMemories = true) =>
+  resetSession: (id, clearMemories = true, mode = 'session') =>
     request(`/sessions/${encodeURIComponent(id)}/reset`, {
       method: 'POST',
-      body: { clear_memories: clearMemories },
+      body: { clear_memories: clearMemories, mode },
     }),
 
   myCharacters: () => request('/characters/mine'),
@@ -164,6 +164,13 @@ export const api = {
     request(`/sessions/${encodeURIComponent(sessionId)}/sync-character`, { method: 'POST' }),
 
   listMemories: () => request('/memories'),
+  getSessionMemory: (sessionId) =>
+    request(`/sessions/${encodeURIComponent(sessionId)}/memory`),
+  updateMemoryFact: (id, body) => request(`/memory/facts/${id}`, { method: 'PATCH', body }),
+  deleteMemoryFact: (id) => request(`/memory/facts/${id}`, { method: 'DELETE' }),
+  updateMemoryEpisode: (id, body) =>
+    request(`/memory/episodes/${id}`, { method: 'PATCH', body }),
+  deleteMemoryEpisode: (id) => request(`/memory/episodes/${id}`, { method: 'DELETE' }),
   deleteMemory: (memoryId) => request(`/memories/${encodeURIComponent(memoryId)}`, { method: 'DELETE' }),
 
   getTurn: (turnId) => request(`/turns/${encodeURIComponent(turnId)}`),

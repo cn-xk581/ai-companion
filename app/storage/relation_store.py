@@ -171,6 +171,9 @@ class RelationStore(ABC):
     @abstractmethod
     async def clear_session_memories(self, session_id: str) -> int: ...
 
+    @abstractmethod
+    async def clear_relation_memories(self, relation_id: int) -> int: ...
+
 
 # ---------------- 内存实现 ----------------
 
@@ -346,6 +349,18 @@ class InMemoryRelationStore(RelationStore):
     async def save_summary(self, summary: SessionSummary) -> None:
         summary.updated_at = now()
         self._summaries[summary.session_id] = summary
+
+    async def clear_relation_memories(self, relation_id: int) -> int:
+        count = 0
+        for fact in list(self._facts.values()):
+            if fact.relation_id == int(relation_id):
+                self._facts.pop(fact.id, None)
+                count += 1
+        for episode in list(self._episodes.values()):
+            if episode.relation_id == int(relation_id):
+                self._episodes.pop(episode.id, None)
+                count += 1
+        return count
 
     async def clear_session_memories(self, session_id: str) -> int:
         count = 0
@@ -579,6 +594,17 @@ class PostgresRelationStore(RelationStore):
             row.token_estimate = summary.token_estimate
             row.updated_at = now()
             await session.commit()
+
+    async def clear_relation_memories(self, relation_id: int) -> int:
+        async with self._factory() as session:
+            facts = await session.execute(
+                delete(FactRow).where(FactRow.relation_id == int(relation_id))
+            )
+            episodes = await session.execute(
+                delete(EpisodeRow).where(EpisodeRow.relation_id == int(relation_id))
+            )
+            await session.commit()
+            return int((facts.rowcount or 0) + (episodes.rowcount or 0))
 
     async def clear_session_memories(self, session_id: str) -> int:
         async with self._factory() as session:

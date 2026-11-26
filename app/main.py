@@ -175,6 +175,20 @@ async def lifespan(app: FastAPI):
         ctx.relations = app.state.relations
         ctx.memory = app.state.memory
 
+        async def _memory_janitor() -> None:
+            import asyncio as _asyncio
+
+            while True:
+                await _asyncio.sleep(24 * 3600)
+                try:
+                    await app.state.memory.archive_daily()
+                except Exception as exc:  # noqa: BLE001
+                    logger.warning("memory janitor failed: %s", exc)
+
+        import asyncio as _asyncio
+
+        app.state.memory_janitor = _asyncio.create_task(_memory_janitor())
+
         logger.info(
             "%s started (env=%s, checkpoint=%s, skills=%d, mcp_tools=%d)",
             settings.app_name,
@@ -187,6 +201,9 @@ async def lifespan(app: FastAPI):
             yield
         finally:
             logger.info("shutdown: closing adapters / stores")
+            janitor = getattr(app.state, "memory_janitor", None)
+            if janitor is not None:
+                janitor.cancel()
             await mcp_registry.close_all()
             await skill_store.close()
             await vector_store.close()
