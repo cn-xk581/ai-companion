@@ -98,6 +98,21 @@ async function startCharacter(preset) {
   }
 }
 
+async function startServerCharacter(char) {
+  if (creating.value) return
+  creating.value = 'c' + char.character_id
+  error.value = ''
+  try {
+    const res = await api.createCharacterSession(char.character_id)
+    await refreshSessions()
+    await openSession(res.session_id)
+  } catch (e) {
+    error.value = e.message || '开始聊天失败'
+  } finally {
+    creating.value = ''
+  }
+}
+
 async function onSent(payload) {
   if (payload?.stage) {
     detail.value = {
@@ -191,7 +206,8 @@ onMounted(() => {
       <CharacterGallery
         v-if="view === 'characters'"
         :creating="creating"
-        @select="startCharacter"
+        @start="startServerCharacter"
+        @start-preset="startCharacter"
       />
 
       <ChatWindow

@@ -151,6 +151,13 @@ export const api = {
       body: { clear_memories: clearMemories },
     }),
 
+  myCharacters: () => request('/characters/mine'),
+  getCharacter: (id) => request(/characters/ + id),
+  deleteCharacter: (id) => request(/characters/ + id, { method: 'DELETE' }),
+  createCharacterSession: (id) => request(/characters/ + id + '/sessions', { method: 'POST' }),
+  syncSessionCharacter: (sessionId) =>
+    request(/sessions/ + encodeURIComponent(sessionId) + '/sync-character', { method: 'POST' }),
+
   listMemories: () => request('/memories'),
   deleteMemory: (memoryId) => request(`/memories/${encodeURIComponent(memoryId)}`, { method: 'DELETE' }),
 
@@ -289,4 +296,44 @@ export function streamChat({ sessionId, userInput, clientMsgId, onMeta, onToken,
 
   send()
   return controller
+}
+/** 导入角色卡（PNG / JSON，multipart） */
+export async function importCharacter(file) {
+  const form = new FormData()
+  form.append('file', file)
+  const res = await fetch(`${API_BASE}/characters/import`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${getToken()}` },
+    body: form,
+  })
+  if (!res.ok) {
+    let detail = res.statusText
+    try {
+      const j = await res.json()
+      detail = j.detail || detail
+    } catch {
+      /* ignore */
+    }
+    const err = new Error(detail || '导入失败')
+    err.status = res.status
+    throw err
+  }
+  return res.json()
+}
+
+/** 下载导出文件（json / png） */
+export async function downloadCharacterFile(characterId, format) {
+  const res = await fetch(`${API_BASE}/characters/${characterId}/export.${format}`, {
+    headers: { Authorization: `Bearer ${getToken()}` },
+  })
+  if (!res.ok) throw new Error('导出失败')
+  const blob = await res.blob()
+  const url = URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  link.href = url
+  link.download = `character-${characterId}.${format}`
+  document.body.appendChild(link)
+  link.click()
+  link.remove()
+  setTimeout(() => URL.revokeObjectURL(url), 1000)
 }
