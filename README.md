@@ -220,6 +220,7 @@ cd frontend && npm install && npm run dev     # http://127.0.0.1:5173（/api 代
 | POST | `/api/v1/users/me/avatar` | 上传头像（jpg/png ≤2MB → 512×512 webp） |
 | POST | `/api/v1/characters/import` | 导入角色卡（PNG / JSON，V1/V2/V3） |
 | GET | `/api/v1/characters/mine` | 我的角色（按 creator_id） |
+| GET | `/api/v1/characters/search?q=` | 按名字/昵称/标签搜索（不公开列表，搜到可直接开聊） |
 | GET | `/api/v1/characters/{id}` | 角色详情（人设/世界书/资源） |
 | GET | `/api/v1/characters/{id}/export.json` | 导出 JSON 卡（仅创作者） |
 | GET | `/api/v1/characters/{id}/export.png` | 导出 PNG 卡（内嵌 ccv3/chara） |

@@ -193,3 +193,49 @@ def test_edit_creates_new_version_and_session_can_sync():
 
         exported = client.get(f"/api/v1/characters/{cid}/export.json", headers=headers).json()
         assert exported["data"]["first_mes"] == "新版开场白"
+
+def test_search_by_name_and_tag_and_start_chat():
+    with _client() as client:
+        owner = _register(client)
+        searcher = _register(client)
+        imported = client.post(
+            "/api/v1/characters/import",
+            files={"file": ("card.json", FIXTURE.read_bytes(), "application/json")},
+            headers=_headers(owner["access_token"]),
+        )
+        cid = imported.json()["character"]["character_id"]
+
+        by_name = client.get(
+            "/api/v1/characters/search", params={"q": "夷光"}, headers=_headers(searcher["access_token"])
+        )
+        assert by_name.status_code == 200
+        found = by_name.json()["characters"]
+        assert any(c["character_id"] == cid for c in found)
+        hit = next(c for c in found if c["character_id"] == cid)
+        assert hit["is_mine"] is False
+
+        by_tag = client.get(
+            "/api/v1/characters/search", params={"q": "山海拾遗"}, headers=_headers(searcher["access_token"])
+        )
+        assert any(c["character_id"] == cid for c in by_tag.json()["characters"])
+
+        empty = client.get(
+            "/api/v1/characters/search", params={"q": "不存在的角色xyz"}, headers=_headers(searcher["access_token"])
+        )
+        assert empty.json()["characters"] == []
+
+        # 搜到就能开新对话（不必是自己创作）
+        started = client.post(
+            f"/api/v1/characters/{cid}/sessions", headers=_headers(searcher["access_token"])
+        )
+        assert started.status_code == 200, started.text
+        detail = client.get(
+            f"/api/v1/sessions/{started.json()['session_id']}", headers=_headers(searcher["access_token"])
+        ).json()
+        assert detail["persona"]["name"].startswith("夷光")
+
+        # 但不能导出别人的人设
+        denied = client.get(
+            f"/api/v1/characters/{cid}/export.json", headers=_headers(searcher["access_token"])
+        )
+        assert denied.status_code == 403

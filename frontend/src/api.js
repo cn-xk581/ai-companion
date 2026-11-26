@@ -152,6 +152,8 @@ export const api = {
     }),
 
   myCharacters: () => request('/characters/mine'),
+  searchCharacters: (q, limit = 20) =>
+    request(`/characters/search?q=${encodeURIComponent(q)}&limit=${limit}`),
   getCharacter: (id) => request(`/characters/${id}`),
   deleteCharacter: (id) => request(`/characters/${id}`, { method: 'DELETE' }),
   updateCharacter: (id, body) => request(`/characters/${id}`, { method: 'PUT', body }),

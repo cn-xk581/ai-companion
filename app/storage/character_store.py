@@ -21,10 +21,13 @@ from sqlalchemy import (
     SmallInteger,
     String,
     Text,
+    cast,
     delete,
     func,
+    or_,
     select,
 )
+from sqlalchemy import Text as _SAText
 from sqlalchemy.ext.asyncio import AsyncEngine, async_sessionmaker
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -106,6 +109,9 @@ class CharacterStore(ABC):
     async def list_by_creator(self, creator_id: int, limit: int = 100) -> list[CharacterRecord]: ...
 
     @abstractmethod
+    async def search(self, query: str, limit: int = 20) -> list[CharacterRecord]: ...
+
+    @abstractmethod
     async def update(self, character_id: int, **fields: Any) -> CharacterRecord | None: ...
 
     @abstractmethod
@@ -185,6 +191,23 @@ class InMemoryCharacterStore(CharacterStore):
     async def list_by_creator(self, creator_id: int, limit: int = 100) -> list[CharacterRecord]:
         rows = [c for c in self._chars.values() if c.creator_id == int(creator_id)]
         rows.sort(key=lambda c: c.created_at or datetime.now(timezone.utc), reverse=True)
+        return rows[:limit]
+
+    async def search(self, query: str, limit: int = 20) -> list[CharacterRecord]:
+        q = (query or "").strip().lower()
+        if not q:
+            return []
+        rows = [
+            c
+            for c in self._chars.values()
+            if c.status == STATUS_ONLINE
+            and (
+                q in (c.name or "").lower()
+                or q in (c.nickname or "").lower()
+                or any(q in str(t).lower() for t in (c.tags or []))
+            )
+        ]
+        rows.sort(key=lambda c: (c.chat_cnt, c.created_at or datetime.now(timezone.utc)), reverse=True)
         return rows[:limit]
 
     async def update(self, character_id: int, **fields: Any) -> CharacterRecord | None:
@@ -439,6 +462,30 @@ class PostgresCharacterStore(CharacterStore):
                         CharacterRow.deleted_at.is_(None),
                     )
                     .order_by(CharacterRow.created_at.desc())
+                    .limit(limit)
+                )
+            ).scalars().all()
+        return [_char(r) for r in rows]
+
+    async def search(self, query: str, limit: int = 20) -> list[CharacterRecord]:
+        q = (query or "").strip()
+        if not q:
+            return []
+        pattern = f"%{q}%"
+        async with self._factory() as session:
+            rows = (
+                await session.execute(
+                    select(CharacterRow)
+                    .where(
+                        CharacterRow.deleted_at.is_(None),
+                        CharacterRow.status == STATUS_ONLINE,
+                        or_(
+                            CharacterRow.name.ilike(pattern),
+                            CharacterRow.nickname.ilike(pattern),
+                            cast(CharacterRow.tags, Text).ilike(pattern),
+                        ),
+                    )
+                    .order_by(CharacterRow.chat_cnt.desc(), CharacterRow.created_at.desc())
                     .limit(limit)
                 )
             ).scalars().all()

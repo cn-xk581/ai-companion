@@ -116,6 +116,13 @@ class CharacterService:
     async def list_mine(self, user_id: int) -> list[CharacterRecord]:
         return await self.store.list_by_creator(user_id)
 
+    async def search(self, user_id: int, query: str, limit: int = 20) -> list[dict[str, Any]]:
+        rows = await self.store.search(query, limit=min(max(limit, 1), 50))
+        return [
+            {**c.public(), "is_mine": c.creator_id == user_id}
+            for c in rows
+        ]
+
     async def require_owned(self, user_id: int, character_id: int) -> CharacterRecord:
         char = await self.store.get(character_id)
         if char is None:

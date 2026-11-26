@@ -1,5 +1,5 @@
 <script setup>
-import { onMounted, ref } from 'vue'
+import { onMounted, ref, watch } from 'vue'
 import { api, downloadCharacterFile, importCharacter } from '../api'
 import { PRESETS } from '../presets'
 import CharacterEditor from './CharacterEditor.vue'
@@ -15,6 +15,32 @@ const error = ref('')
 const busy = ref('')
 const fileInput = ref(null)
 const editing = ref(null)
+const query = ref('')
+const results = ref([])
+const searching = ref(false)
+let searchTimer = null
+
+watch(query, (value) => {
+  if (searchTimer) clearTimeout(searchTimer)
+  const q = value.trim()
+  if (!q) {
+    results.value = []
+    searching.value = false
+    return
+  }
+  searching.value = true
+  searchTimer = setTimeout(async () => {
+    try {
+      const res = await api.searchCharacters(q)
+      results.value = res.characters || []
+    } catch (e) {
+      error.value = e.message || '搜索失败'
+      results.value = []
+    } finally {
+      searching.value = false
+    }
+  }, 280)
+})
 
 async function load() {
   loading.value = true
@@ -115,6 +141,51 @@ onMounted(load)
 
     <p v-if="error" class="error">{{ error }}</p>
 
+    <div class="search">
+      <span class="search__icon" aria-hidden="true">⌕</span>
+      <input
+        v-model="query"
+        class="search__input"
+        type="search"
+        placeholder="搜索角色名或标签，比如「山海拾遗」「治愈」"
+        aria-label="搜索角色"
+      />
+      <button v-if="query" class="search__clear" aria-label="清空" @click="query = ''">✕</button>
+    </div>
+
+    <template v-if="query.trim()">
+      <h2 class="section-title">
+        搜索结果
+        <span class="section-count num">{{ searching ? '…' : results.length }}</span>
+      </h2>
+      <p v-if="searching" class="hint">搜索中…</p>
+      <p v-else-if="!results.length" class="hint">没找到匹配「{{ query.trim() }}」的角色，换个名字或标签试试。</p>
+      <div v-else class="grid">
+        <article v-for="c in results" :key="c.character_id" class="card">
+          <span class="card__portrait">
+            <img v-if="c.cover_url" :src="c.cover_url" alt="" />
+            <span v-else class="card__initial serif">{{ (c.name || '人').slice(0, 1) }}</span>
+            <span class="card__tags">
+              <span v-for="t in tagList(c)" :key="t" class="card__tag">{{ t }}</span>
+            </span>
+          </span>
+          <div class="card__body">
+            <div class="card__top">
+              <span class="card__name serif" :title="c.name">{{ c.name }}</span>
+              <span class="card__meta">{{ c.is_mine ? '我创作' : '他人创作' }}</span>
+            </div>
+            <p class="card__summary">{{ c.summary || '（无简介）' }}</p>
+            <div class="card__actions">
+              <button class="mini mini--primary" :disabled="!!creating" @click="start(c)">
+                {{ creating === 'c' + c.character_id ? '开启中…' : '添加到新对话' }}
+              </button>
+            </div>
+          </div>
+        </article>
+      </div>
+    </template>
+
+    <template v-else>
     <h2 class="section-title">
       我的角色
       <span class="section-count num">{{ mine.length }}</span>
@@ -173,7 +244,9 @@ onMounted(load)
         </span>
       </button>
     </div>
-    <CharacterEditor
+      </template>
+
+  <CharacterEditor
     v-if="editing"
     :character-id="editing"
     @close="editing = null"
@@ -209,6 +282,34 @@ onMounted(load)
   font-size: var(--step-0);
   color: var(--bad);
 }
+.search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 2px 0 18px;
+  padding: 0 10px;
+  height: 38px;
+  border-radius: 999px;
+  background: var(--panel-2);
+  box-shadow: inset 0 0 0 1px var(--line);
+}
+.search__icon { font-size: 15px; color: var(--text-3); }
+.search__input {
+  flex: 1;
+  height: 100%;
+  font-size: var(--step-0);
+  color: var(--text);
+  background: transparent;
+}
+.search__input::placeholder { color: var(--text-3); }
+.search__input:focus { outline: none; }
+.search__clear {
+  font-size: 11px;
+  color: var(--text-3);
+  padding: 4px 6px;
+}
+.search__clear:hover { color: var(--text); }
+
 .section-title {
   display: flex;
   align-items: baseline;

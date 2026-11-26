@@ -99,6 +99,20 @@ async def create_version(
     return {"version": _version_public(version)}
 
 
+@router.get("/search")
+async def search_characters(
+    request: Request,
+    q: str = "",
+    limit: int = 20,
+    user: AuthUser = Depends(get_current_user),
+):
+    """按名字 / 昵称 / 标签搜索（不公开列表，但可搜到并直接开聊）。"""
+    service = _service(request)
+    if not q.strip():
+        return {"characters": []}
+    return {"characters": await service.search(user.user_id, q, limit)}
+
+
 @router.get("/{character_id}")
 async def character_detail(
     character_id: int, request: Request, user: AuthUser = Depends(get_current_user)
