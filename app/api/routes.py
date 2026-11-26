@@ -144,7 +144,7 @@ async def create_session(
 ):
     _, service = _deps(request)
     try:
-        record = await service.create_session(req.session_id, user.user_id)
+        record = await service.create_session(req.session_id, user.user_id, greeting=req.greeting or "")
     except SessionOwnershipError as exc:
         raise HTTPException(status_code=403, detail=str(exc))
     return _detail(record)

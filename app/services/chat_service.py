@@ -19,7 +19,7 @@ from langgraph.types import Command
 
 from app.core.checkpointing import thread_config
 from app.core.loopguard import new_guard
-from app.domain.companion import MoodState, Persona, RelationshipStage, TurnStatus
+from app.domain.companion import ChatMessage, MoodState, Persona, RelationshipStage, TurnStatus
 from app.graph.context import GraphContext
 from app.graph.nodes.wrapup import SAFE_REPLY
 from app.storage.postgres import SessionRecord
@@ -47,7 +47,7 @@ class ChatService:
 
     # ---------------- 会话 ----------------
 
-    async def create_session(self, session_id: str | None, user_id: str) -> SessionRecord:
+    async def create_session(self, session_id: str | None, user_id: str, greeting: str = "") -> SessionRecord:
         session_id = session_id or uuid.uuid4().hex
         existing = await self.ctx.repo.get_session(session_id)
         if existing is not None:
@@ -56,6 +56,10 @@ class ChatService:
             return existing
         record = SessionRecord(session_id=session_id, user_id=user_id)
         await self.ctx.repo.save_session(record)
+        if greeting:
+            await self.ctx.repo.append_message(
+                session_id, ChatMessage(role="assistant", content=greeting)
+            )
         return record
 
     async def require_session(self, session_id: str, user_id: str) -> SessionRecord:

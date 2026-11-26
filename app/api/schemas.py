@@ -31,6 +31,7 @@ class ChatResponse(BaseModel):
 
 class SessionCreateRequest(BaseModel):
     session_id: str | None = Field(default=None, max_length=64)
+    greeting: str | None = Field(default=None, max_length=1000)
 
 
 class CharacterVersionInfo(BaseModel):

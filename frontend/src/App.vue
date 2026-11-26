@@ -104,7 +104,7 @@ async function startCharacter(preset) {
   creating.value = preset.id
   error.value = ''
   try {
-    const created = await api.createSession()
+    const created = await api.createSession(null, preset.greeting || '')
     await api.updatePersona(created.session_id, preset.persona)
     detail.value = await api.getSession(created.session_id)
     activeId.value = created.session_id

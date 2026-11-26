@@ -308,3 +308,16 @@ def test_reset_modes_clear_session_then_relation():
         assert cleared.status_code == 200
         memory = client.get(f"/api/v1/sessions/{sid}/memory", headers=headers).json()
         assert memory["facts"] == [] and memory["episodes"] == []
+
+def test_create_session_with_greeting_writes_first_message():
+    with _client() as client:
+        body = _register(client)
+        headers = _headers(body["access_token"])
+        created = client.post(
+            "/api/v1/sessions", json={"greeting": "（她抬眼看你）你来啦。"}, headers=headers
+        )
+        assert created.status_code == 200, created.text
+        sid = created.json()["session_id"]
+        history = client.get(f"/api/v1/sessions/{sid}/history", headers=headers).json()["messages"]
+        assert history and history[0]["role"] == "assistant"
+        assert "你来啦" in history[0]["content"]

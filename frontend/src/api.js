@@ -138,8 +138,11 @@ export const api = {
   deleteAvatar: () => request('/users/me/avatar', { method: 'DELETE' }),
 
   listSessions: () => request('/sessions'),
-  createSession: (sessionId) =>
-    request('/sessions', { method: 'POST', body: { session_id: sessionId || null } }),
+  createSession: (sessionId, greeting = '') =>
+    request('/sessions', {
+      method: 'POST',
+      body: { session_id: sessionId || null, greeting },
+    }),
   getSession: (id) => request(`/sessions/${encodeURIComponent(id)}`),
   getHistory: (id, limit = 100) =>
     request(`/sessions/${encodeURIComponent(id)}/history?limit=${limit}`),
