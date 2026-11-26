@@ -100,6 +100,13 @@ onMounted(loadHealth)
             <div><dt>应用</dt><dd>{{ health.app }}</dd></div>
             <div><dt>环境</dt><dd class="num">{{ health.environment }}</dd></div>
             <div><dt>检查点</dt><dd class="num">{{ health.checkpoint?.backend }}</dd></div>
+            <div>
+              <dt>模型</dt>
+              <dd class="num">
+                {{ health.llm?.model || '未配置' }}
+                <template v-if="health.llm?.host"> · {{ health.llm.host }}</template>
+              </dd>
+            </div>
             <div><dt>Skill</dt><dd class="num">{{ health.skills?.total }} 个 / 在线 {{ health.skills?.enabled }}</dd></div>
             <div><dt>MCP</dt><dd class="num">{{ health.mcp?.tools }} 个工具</dd></div>
           </dl>

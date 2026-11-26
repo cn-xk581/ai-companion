@@ -1,11 +1,14 @@
 <script setup>
 import { computed, onMounted, ref } from 'vue'
 import LoginView from './components/LoginView.vue'
+import NavRail from './components/NavRail.vue'
 import SessionList from './components/SessionList.vue'
+import CharacterGallery from './components/CharacterGallery.vue'
 import ChatWindow from './components/ChatWindow.vue'
-import SettingsDrawer from './components/SettingsDrawer.vue'
 import SessionPanel from './components/SessionPanel.vue'
+import SettingsDrawer from './components/SettingsDrawer.vue'
 import TracePanel from './components/TracePanel.vue'
+import UserCard from './components/UserCard.vue'
 import { auth, logout } from './store/auth'
 import { api } from './api'
 import { initTheme } from './store/theme'
@@ -13,9 +16,12 @@ import { initTheme } from './store/theme'
 initTheme()
 
 const authed = computed(() => !!auth.token)
+const view = ref('chat') // chat | characters
 const sessions = ref([])
 const activeId = ref('')
 const detail = ref(null)
+const creating = ref('')
+const userCardOpen = ref(false)
 const settingsOpen = ref(false)
 const sessionPanelOpen = ref(false)
 const traceOpen = ref(false)
@@ -33,10 +39,12 @@ async function refreshSessions() {
   try {
     const res = await api.listSessions()
     sessions.value = res.sessions || []
-    if (!activeId.value && sessions.value.length) await openSession(sessions.value[0].session_id)
     if (activeId.value && !sessions.value.some((s) => s.session_id === activeId.value)) {
       activeId.value = ''
       detail.value = null
+    }
+    if (view.value === 'chat' && !activeId.value && sessions.value.length) {
+      await openSession(sessions.value[0].session_id)
     }
   } catch (e) {
     if (e.status === 401) doLogout()
@@ -46,8 +54,8 @@ async function refreshSessions() {
 
 async function openSession(sessionId) {
   if (!sessionId) return
-  if (sessionId === activeId.value) return
   error.value = ''
+  view.value = 'chat'
   try {
     detail.value = await api.getSession(sessionId)
     activeId.value = sessionId
@@ -61,12 +69,32 @@ async function newSession() {
   error.value = ''
   try {
     const created = await api.createSession()
-    await refreshSessions()
     detail.value = created
     activeId.value = created.session_id
+    view.value = 'chat'
     chatKey.value += 1
+    await refreshSessions()
   } catch (e) {
     error.value = e.message || '创建会话失败'
+  }
+}
+
+async function startCharacter(preset) {
+  if (creating.value) return
+  creating.value = preset.id
+  error.value = ''
+  try {
+    const created = await api.createSession()
+    await api.updatePersona(created.session_id, preset.persona)
+    detail.value = await api.getSession(created.session_id)
+    activeId.value = created.session_id
+    view.value = 'chat'
+    chatKey.value += 1
+    await refreshSessions()
+  } catch (e) {
+    error.value = e.message || '创建角色失败'
+  } finally {
+    creating.value = ''
   }
 }
 
@@ -118,7 +146,9 @@ function doLogout() {
   sessions.value = []
   activeId.value = ''
   detail.value = null
+  userCardOpen.value = false
   settingsOpen.value = false
+  sessionPanelOpen.value = false
   traceOpen.value = false
 }
 
@@ -134,27 +164,38 @@ onMounted(() => {
 <template>
   <LoginView v-if="!authed" @authed="onAuthed" />
 
-  <div v-else class="shell" :class="{ 'has-open': !!activeId }">
-    <aside class="rail">
+  <div v-else class="shell" :class="{ 'has-chat': !!activeId, 'is-gallery': view === 'characters' }">
+    <NavRail
+      :active="view"
+      :user="auth.user"
+      @view="view = $event"
+      @settings="settingsOpen = true"
+      @user="userCardOpen = true"
+    />
+
+    <aside class="middle">
       <SessionList
         :sessions="sessions"
         :active-id="activeId"
-        :user="auth.user?.username || '我'"
         @select="openSession"
         @new="newSession"
-        @settings="settingsOpen = true"
-        @logout="doLogout"
       />
     </aside>
 
-    <main class="stage">
+    <main class="main">
       <p v-if="error" class="error">
         <span>{{ error }}</span>
         <button class="icon-btn" aria-label="关闭" @click="error = ''">✕</button>
       </p>
 
+      <CharacterGallery
+        v-if="view === 'characters'"
+        :creating="creating"
+        @select="startCharacter"
+      />
+
       <ChatWindow
-        v-if="activeId"
+        v-else-if="activeId"
         :key="chatKey + activeId"
         :session-id="activeId"
         :detail="detail"
@@ -167,16 +208,16 @@ onMounted(() => {
       />
 
       <section v-else class="empty">
-        <p class="empty__line serif">还没有在聊的人</p>
+        <p class="empty__line serif">还没有打开任何对话</p>
         <p class="empty__note">
-          开一段对话吧。她记得你说过的事，关系也会从陌生一点点往前走；
-          想改她的性格、说话方式或者禁区，左下角「设置」里都能改。
+          左边选一个人接着说，或者点「人物」，从几位预设角色里挑一个开始。
         </p>
-        <button class="btn btn--primary" @click="newSession">开始第一段对话</button>
+        <div class="empty__actions">
+          <button class="btn btn--primary" @click="newSession">开一段新对话</button>
+          <button class="btn btn--quiet" @click="view = 'characters'">去看看人物</button>
+        </div>
       </section>
     </main>
-
-    <SettingsDrawer v-if="settingsOpen" @close="settingsOpen = false" />
 
     <SessionPanel
       v-if="sessionPanelOpen && activeId"
@@ -187,6 +228,8 @@ onMounted(() => {
       @reset="onReset"
     />
 
+    <SettingsDrawer v-if="settingsOpen" @close="settingsOpen = false" />
+
     <TracePanel
       v-if="traceOpen"
       :events="traceEvents"
@@ -194,31 +237,30 @@ onMounted(() => {
       :error="traceError"
       @close="traceOpen = false"
     />
+
+    <UserCard v-if="userCardOpen" :user="auth.user" @close="userCardOpen = false" @logout="doLogout" />
   </div>
 </template>
 
 <style scoped>
 .shell {
-  display: flex;
+  display: grid;
+  grid-template-columns: var(--rail-w-sm) 292px minmax(0, 1fr);
   height: 100%;
   background: var(--bg);
 }
-
-.rail {
-  width: var(--rail-w);
-  flex-shrink: 0;
-  background: var(--panel);
-  border-right: 1px solid var(--line);
-}
-
-.stage {
-  flex: 1;
+.middle {
   min-width: 0;
-  display: flex;
-  flex-direction: column;
+  border-right: 1px solid var(--line);
   overflow: hidden;
 }
-
+.main {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  overflow: hidden;
+}
 .error {
   display: flex;
   align-items: center;
@@ -230,14 +272,13 @@ onMounted(() => {
   background: color-mix(in srgb, var(--bad) 10%, var(--panel));
   border-bottom: 1px solid var(--line);
 }
-
 .empty {
   margin: auto;
-  max-width: 30em;
+  max-width: 34em;
   display: flex;
   flex-direction: column;
   align-items: flex-start;
-  gap: 14px;
+  gap: 12px;
   padding: 40px;
 }
 .empty__line {
@@ -249,20 +290,35 @@ onMounted(() => {
   line-height: 1.85;
   color: var(--text-3);
 }
+.empty__actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 6px;
+  flex-wrap: wrap;
+}
+
+/* 人物页：隐藏中间会话列，让卡片有整块空间 */
+.shell.is-gallery {
+  grid-template-columns: var(--rail-w-sm) minmax(0, 1fr);
+}
+.shell.is-gallery .middle {
+  display: none;
+}
 
 @media (max-width: 900px) {
-  .rail {
-    width: 100%;
-    border-right: 0;
+  .shell,
+  .shell.is-gallery {
+    grid-template-columns: var(--rail-w-sm) minmax(0, 1fr);
   }
-  .stage {
+  .middle {
     display: none;
   }
-  .shell.has-open .rail {
-    display: none;
+  /* 手机：没选会话时显示列表，选了会话显示聊天，靠返回键回来 */
+  .shell:not(.has-chat) .middle {
+    display: block;
   }
-  .shell.has-open .stage {
-    display: flex;
+  .shell:not(.has-chat) .main {
+    display: none;
   }
 }
 </style>

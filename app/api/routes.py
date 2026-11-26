@@ -8,6 +8,7 @@ import json
 import logging
 import uuid
 from typing import Any, AsyncIterator
+from urllib.parse import urlparse
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Request
 from fastapi.responses import StreamingResponse
@@ -378,11 +379,22 @@ async def unregister_skill(name: str, request: Request):
 @router.get("/health", response_model=HealthResponse)
 async def health(request: Request):
     ctx, _ = _deps(request)
+    base = ctx.settings.llm_base_url or ""
+    try:
+        host = urlparse(base).hostname or ""
+    except ValueError:
+        host = ""
     return HealthResponse(
         status="ok",
         app=ctx.settings.app_name,
         environment=ctx.settings.environment,
         domain=ctx.settings.domain,
+        llm={
+            "model": ctx.settings.llm_model,
+            "host": host,
+            "configured": bool(ctx.settings.llm_api_key),
+            "image_model": ctx.settings.image_model or "",
+        },
         checkpoint=ctx.checkpointer_desc,
         skills=await ctx.skills.stats(),
         mcp=await ctx.mcp.health(),

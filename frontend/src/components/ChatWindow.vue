@@ -233,6 +233,8 @@ onUnmounted(() => {
         <p class="who__line">
           <span>{{ stagePhrase(stage) }}</span>
           <i class="split" aria-hidden="true"></i>
+          <span class="num">好感度 {{ score }}</span>
+          <i class="split" aria-hidden="true"></i>
           <span>{{ moodEmoji(mood) }} {{ moodLabel(mood) }}</span>
         </p>
       </div>
@@ -282,6 +284,9 @@ onUnmounted(() => {
         <button v-for="e in EMOJIS" :key="e" class="emoji" @click="addEmoji(e)">{{ e }}</button>
       </div>
       <div class="composer__row">
+        <button class="voice-toggle" title="语音输入（暂未开放）" aria-label="语音输入" disabled>
+          🎙
+        </button>
         <button
           class="emoji-toggle"
           :class="{ 'is-on': showEmoji }"
@@ -484,6 +489,16 @@ onUnmounted(() => {
   border-radius: var(--r-tight);
   font-size: 18px;
   color: var(--text-2);
+}
+.voice-toggle {
+  flex-shrink: 0;
+  width: 34px;
+  height: 34px;
+  border-radius: var(--r-tight);
+  font-size: 16px;
+  color: var(--text-3);
+  opacity: 0.55;
+  cursor: not-allowed;
 }
 .emoji-toggle:hover,
 .emoji-toggle.is-on {

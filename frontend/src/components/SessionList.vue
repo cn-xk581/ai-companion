@@ -6,9 +6,8 @@ import { formatListTime, truncate } from '../utils'
 const props = defineProps({
   sessions: { type: Array, default: () => [] },
   activeId: { type: String, default: '' },
-  user: { type: String, default: '我' },
 })
-const emit = defineEmits(['select', 'new', 'settings', 'logout'])
+const emit = defineEmits(['select', 'new'])
 
 const rows = computed(() =>
   props.sessions.map((s) => ({
@@ -20,17 +19,16 @@ const rows = computed(() =>
 </script>
 
 <template>
-  <div class="rail">
-    <header class="rail__top">
-      <div class="me">
-        <span class="me__mark serif">{{ (user || '我').slice(0, 1) }}</span>
-        <span class="me__name">{{ user }}</span>
-      </div>
-      <button class="btn btn--quiet btn--sm" @click="emit('new')">＋ 新对话</button>
+  <div class="list">
+    <header class="list__head">
+      <h2 class="list__title serif">聊天</h2>
+      <button class="new" title="开始一段新对话" aria-label="新对话" @click="emit('new')">＋</button>
     </header>
 
-    <div class="rail__list">
-      <p v-if="!rows.length" class="rail__empty">这里还很安静。点「新对话」，说第一句话。</p>
+    <div class="list__body">
+      <p v-if="!rows.length" class="empty">
+        还没有在聊的人。<br />点右上角「＋」，或者去「人物」里挑一个。
+      </p>
       <button
         v-for="(s, i) in rows"
         :key="s.session_id"
@@ -39,7 +37,7 @@ const rows = computed(() =>
         :style="{ '--i': i }"
         @click="emit('select', s.session_id)"
       >
-        <span class="item__avatar" :style="{ background: s.avatar ? 'transparent' : undefined }">
+        <span class="item__avatar">
           <img v-if="s.avatar" :src="s.avatar" alt="" />
           <span v-else class="serif">{{ (s.name || '柔').slice(0, 1) }}</span>
         </span>
@@ -48,72 +46,58 @@ const rows = computed(() =>
             <span class="item__name">{{ s.name }}</span>
             <span class="item__time num">{{ formatListTime(s.last_time) }}</span>
           </span>
-          <span class="item__bottom">
-            <span class="item__msg">{{ s.preview }}</span>
-          </span>
+          <span class="item__msg">{{ s.preview }}</span>
           <span class="item__status">{{ s.status }}</span>
         </span>
       </button>
     </div>
-
-    <footer class="rail__bottom">
-      <button class="rail__btn" @click="emit('settings')">
-        <span class="glyph" aria-hidden="true">⚙</span>设置
-      </button>
-      <button class="rail__btn" @click="emit('logout')">
-        <span class="glyph" aria-hidden="true">⏻</span>退出
-      </button>
-    </footer>
   </div>
 </template>
 
 <style scoped>
-.rail {
+.list {
   display: flex;
   flex-direction: column;
   height: 100%;
+  background: var(--panel);
 }
-.rail__top {
+.list__head {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
-  padding: 16px 14px 12px;
+  padding: 18px 16px 10px;
 }
-.me {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  min-width: 0;
+.list__title {
+  font-size: var(--step-2);
+  font-weight: 500;
+  color: var(--text);
 }
-.me__mark {
+.new {
   width: 28px;
   height: 28px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  border-radius: 7px;
-  font-size: 15px;
-  color: var(--paper-ink);
-  background: var(--paper);
+  border-radius: var(--r-tight);
+  font-size: 18px;
+  line-height: 1;
+  color: var(--text-2);
+  background: var(--raise);
+  box-shadow: inset 0 0 0 1px var(--line);
 }
-.me__name {
-  font-size: var(--step-0);
-  color: var(--text);
-  max-width: 120px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+.new:hover {
+  color: var(--accent);
+  box-shadow: inset 0 0 0 1px var(--accent);
 }
-.rail__list {
+.list__body {
   flex: 1;
   overflow-y: auto;
-  padding: 2px 8px 10px;
+  padding: 2px 8px 12px;
 }
-.rail__empty {
-  padding: 26px 16px;
+.empty {
+  padding: 40px 18px;
   font-size: var(--step-0);
-  line-height: 1.8;
+  line-height: 1.9;
   color: var(--text-3);
   text-align: center;
 }
@@ -122,29 +106,15 @@ const rows = computed(() =>
   display: flex;
   gap: 10px;
   width: 100%;
-  padding: 10px 10px 10px 12px;
-  border-radius: var(--r-box);
+  padding: 10px;
   text-align: left;
-  animation: settle 0.32s var(--ease) both;
-  animation-delay: calc(var(--i, 0) * 24ms);
+  border-radius: var(--r-box);
+  animation: settle 0.3s var(--ease) both;
+  animation-delay: calc(var(--i, 0) * 22ms);
 }
-@keyframes settle {
-  from {
-    opacity: 0;
-    transform: translateY(5px);
-  }
-  to {
-    opacity: 1;
-    transform: none;
-  }
-}
-.item:hover {
-  background: var(--line-soft);
-}
-.item.is-active {
-  background: var(--panel-2);
-  box-shadow: inset 0 0 0 1px var(--line);
-}
+@keyframes settle { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+.item:hover { background: var(--line-soft); }
+.item.is-active { background: var(--panel-2); box-shadow: inset 0 0 0 1px var(--line); }
 .item.is-active::before {
   content: '';
   position: absolute;
@@ -168,73 +138,19 @@ const rows = computed(() =>
   color: var(--paper-ink);
   font-size: 17px;
 }
-.item__avatar img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-}
-.item__main {
-  flex: 1;
-  min-width: 0;
-}
-.item__top {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 8px;
-}
-.item__name {
-  font-size: var(--step-1);
-  color: var(--text);
-}
-.item__time {
-  flex-shrink: 0;
-  font-size: var(--step--1);
-  color: var(--text-3);
-}
-.item__bottom {
+.item__avatar img { width: 100%; height: 100%; object-fit: cover; }
+.item__main { flex: 1; min-width: 0; }
+.item__top { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.item__name { font-size: var(--step-1); color: var(--text); }
+.item__time { flex-shrink: 0; font-size: var(--step--1); color: var(--text-3); }
+.item__msg {
   display: block;
   margin-top: 1px;
-}
-.item__msg {
   font-size: var(--step-0);
   color: var(--text-2);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  display: block;
 }
-.item__status {
-  display: block;
-  margin-top: 2px;
-  font-size: var(--step--1);
-  color: var(--text-3);
-}
-.rail__bottom {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  padding: 8px 10px;
-  border-top: 1px solid var(--line);
-}
-.rail__btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  height: 30px;
-  padding: 0 10px;
-  border-radius: var(--r-tight);
-  font-size: var(--step-0);
-  color: var(--text-2);
-  transition: color 0.14s, background 0.14s;
-}
-.rail__btn:hover {
-  color: var(--text);
-  background: var(--line-soft);
-}
-.glyph {
-  font-size: 14px;
-  line-height: 1;
-  opacity: 0.85;
-}
+.item__status { display: block; margin-top: 2px; font-size: var(--step--1); color: var(--text-3); }
 </style>

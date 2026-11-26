@@ -161,6 +161,7 @@ class HealthResponse(BaseModel):
     app: str
     environment: str
     domain: str
+    llm: dict[str, Any] = Field(default_factory=dict)
     checkpoint: dict[str, Any]
     skills: dict[str, Any]
     mcp: dict[str, Any]
