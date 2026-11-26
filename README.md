@@ -18,6 +18,7 @@
 - [她能做到什么](#她能做到什么)
 - [工程能力](#工程能力)
 - [架构](#架构)
+- [架构与亮点（当前版本）](#架构与亮点当前版本)
 - [关键设计决策](#关键设计决策)
 - [技术栈](#技术栈)
 - [目录结构](#目录结构)
@@ -126,6 +127,84 @@ persist（情绪推进 → 关系推进 → 记忆抽取 → 消息/快照落库
 
 共享：`memory.recall` 同时给 intake 与 replier；隔离：replier 调 `reminder.create` 会被 Skill 白名单拒绝，
 即使把 Skill 塞进白名单，缺少 `calendar.*` 也会被 MCP 层拒绝。
+
+---
+
+## 架构与亮点（当前版本）
+
+### 分层
+
+```
+接入    FastAPI ─ 鉴权(JWT+refresh) / 角色卡上传 / SSE / 运维接口
+          │
+编排    ChatService + LangGraph（turn → plan → execute → reply → safety → wrapup）
+          │            只做状态转换、路由、预算
+业务    Skill：人设 / 风控 / 关系 / 情绪 / 记忆 / 提醒 / 画图 / 表情
+          │            规则用确定性代码，模型只负责“说什么、要不要用工具”
+适配    MCP：calendar / image_gen / meme_library（只对接外部资源）
+          │
+存储    PostgreSQL（业务表 + pgvector）· Redis（缓存/注册中心）· 对象存储（本地或 S3/OSS）
+```
+
+### 三个业务域
+
+| 域 | 关键表 | 说明 |
+|---|---|---|
+| 账号 | `users` / `user_auth` / `user_profile` | BIGINT 主键、argon2id、access+refresh 轮换、禁言/封禁状态 |
+| 角色 | `characters` / `character_versions` / `character_lorebooks` / `character_lorebook_entries` / `character_media` | 角色卡导入导出、版本快照、世界书、头像 |
+| 会话与记忆 | `sessions` / `messages` / `turns` / `turn_events` + `user_character_relations` / `relation_facts` / `relation_episodes` / `session_summaries` | 多会话、锁版本、三层记忆、全链路审计 |
+
+### 三层记忆（和酒馆最大的区别）
+
+```
+L1 用户事实      relation_facts       生日 / 过敏 / 称呼 / 忌口（KV + 置信度 + pin）
+L2 共同经历      relation_episodes    约定、里程碑、争吵、未解决的线头（向量 + 情感 + 1~10 重要度）
+L3 会话记忆      session_summaries    这段对话的滚动摘要 + 未完成线头
+关系状态         user_character_relations  好感 / 阶段 / 情绪 / 专属称呼 / 累计轮次
+```
+
+- **归属**：L1/L2 挂在「用户 × 角色」的 relation 上，跨会话共享；L3 只属于一段会话，不串味；
+- **写入**：每轮抽取 `{facts, events, affinity_delta}`；每 12 轮生成摘要；每日归档；
+- **冲突覆盖**：同 key 冲突 → 旧值 `superseded`、新值 active，保留“曾经…现在…”的演变链；
+  不同 key 但语义冲突（爱吃辣 → 胃不好戒辣）用相似度 + 否定翻转检测，再让 LLM 裁判确认；
+- **遗忘**：`0.4*recency + 0.3*importance + 0.3*relevance`，半衰期 3/14/90 天；
+  importance≤3 且 14 天未访问归档，pin/里程碑豁免；>200 条按月用 LLM 合并成 `memoir`；
+- **注入**：会话摘要 → 事实（pinned 优先）→ 情景 Top3，600 token 预算；称呼/身份进 system prompt 的【你们的关系】；
+- **可控**：事实可改/置顶/删除，情景可置顶/删除，历史可追溯，重置分三档（保留 / 清本会话 / 彻底）。
+
+### 角色卡
+
+- 导入 PNG（tEXt `ccv3`/`chara`）或 JSON（V1/V2/V3），**raw_card 原样保留**，未知字段不丢；
+- 世界书按 SillyTavern 字段落表，导出时拼回 `character_book`；
+- 头像自动抽内嵌图压成 256 webp；原始 PNG 存对象存储（本地 / S3 兼容），导出时重写 `ccv3`+`chara`；
+- 搜索按名字/昵称/标签，搜到即可开聊；导出/删除只允许 `creator_id` 本人。
+
+### 会话
+
+- 同一角色可有多段会话；创建时**锁定角色版本**，角色更新不改变老会话；
+- 需要跟进新版时，在会话设置里显式「同步到最新版本」；
+- 一轮对话 = 一个 checkpoint（`user:session:turn`），崩溃/人工复核都能续跑；
+- SSE：`meta → token* → done`，前端按气泡渲染，支持一段回复拆多条。
+
+### 亮点（一句话版）
+
+1. **越聊越懂你**：事实、经历、摘要三层记忆 + 冲突覆盖 + 遗忘曲线，不是把聊天记录塞回提示词；
+2. **人设不漂移**：关系/情绪/阶段是图状态 + 规则推进，模型只负责说话；
+3. **角色卡无损**：PNG/JSON 导入导出、版本快照、世界书、原始卡兜底；
+4. **多会话不串味**：会话锁版本，L3 记忆按会话隔离，L1/L2 跨会话共享；
+5. **可解释**：每次 LLM/Skill/MCP 调用、每个决策都有 span，排障不靠猜；
+6. **可运营**：Skill 注册中心动态上下线，白名单隔离，错误分类重试、SingleFlight、防循环；
+7. **可部署**：清单驱动安装/卸载，dry-run，systemd + nginx + compose，卸载可自检。
+
+### 关键取舍
+
+| 取舍 | 选择 |
+|---|---|
+| 记忆存哪 | 结构化事实 + 情景摘要 + 向量检索，而不是全文回灌 |
+| 冲突处理 | 软覆盖（保留演变链），不是物理删除 |
+| 版本策略 | 会话锁版本 + 显式同步，避免“人设突然变了” |
+| 角色卡保真 | `raw_card` + 原始 PNG 兜底，导出 1:1 |
+| 失败处理 | 规则先行、模型兜底；记忆/摘要失败不阻断对话 |
 
 ---
 
