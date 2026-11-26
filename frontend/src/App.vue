@@ -141,8 +141,8 @@ async function openTrace(turnId) {
   }
 }
 
-function doLogout() {
-  logout()
+async function doLogout() {
+  await logout()
   sessions.value = []
   activeId.value = ''
   detail.value = null

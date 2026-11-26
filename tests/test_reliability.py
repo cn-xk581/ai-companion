@@ -56,7 +56,7 @@ async def _ctx_with_adapter(adapter: CountingAdapter, **overrides):
 
 async def test_invalid_skill_args_are_blocked_before_execution():
     ctx = await make_ctx()
-    sctx = ctx.skill_context("t-val", "u1", _state_agent())
+    sctx = ctx.skill_context("t-val", 1, _state_agent())
     outcome = await ctx.executor.run(
         SkillCall(skill="relationship.update", args={"score": "不是数字"}), sctx=sctx
     )

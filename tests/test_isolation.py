@@ -29,7 +29,7 @@ class _CalProbeSkill(Skill):
         remind_at = (datetime.now(timezone.utc) + timedelta(hours=1)).isoformat()
         result = await sctx.call_mcp(
             "calendar.create",
-            {"user_id": sctx.user_id, "title": payload.title, "remind_at": remind_at},
+            {"user_id": str(sctx.user_id), "title": payload.title, "remind_at": remind_at},
             declared=self.mcp_tools,
         )
         return {"reminder": result.data.get("reminder")}
@@ -37,7 +37,7 @@ class _CalProbeSkill(Skill):
 
 async def test_replier_cannot_create_reminder():
     ctx = await make_ctx()
-    sctx = ctx.skill_context("t-iso-1", "u1", REPLIER_AGENT)
+    sctx = ctx.skill_context("t-iso-1", 1, REPLIER_AGENT)
     outcome = await ctx.executor.run(
         SkillCall(skill="reminder.create", args={"title": "x", "remind_at": "2030-01-01T00:00:00Z"}),
         sctx=sctx,
@@ -62,7 +62,7 @@ async def test_mcp_whitelist_blocks_undeclared_resource():
         id="probe_no_cal", name="探针", description="", allowed_skills=["test.cal_probe"], allowed_mcp=[]
     )
     denied = await ctx.executor.run(
-        SkillCall(skill="test.cal_probe", args={}), sctx=ctx.skill_context("t-iso-2", "u1", no_calendar)
+        SkillCall(skill="test.cal_probe", args={}), sctx=ctx.skill_context("t-iso-2", 1, no_calendar)
     )
     assert denied.ok is False
     assert denied.error_kind == "permission"
@@ -76,7 +76,7 @@ async def test_mcp_whitelist_blocks_undeclared_resource():
         allowed_mcp=["calendar.*"],
     )
     allowed = await ctx.executor.run(
-        SkillCall(skill="test.cal_probe", args={}), sctx=ctx.skill_context("t-iso-3", "u1", with_calendar)
+        SkillCall(skill="test.cal_probe", args={}), sctx=ctx.skill_context("t-iso-3", 1, with_calendar)
     )
     assert allowed.ok is True
     assert allowed.data["reminder"]["title"] == "探针提醒"
@@ -85,7 +85,7 @@ async def test_mcp_whitelist_blocks_undeclared_resource():
 async def test_shared_skill_available_to_two_agents():
     ctx = await make_ctx()
     for agent, tag in ((INTAKE_AGENT, "intake"), (REPLIER_AGENT, "replier")):
-        sctx = ctx.skill_context(f"t-shared-{tag}", "u1", agent)
+        sctx = ctx.skill_context(f"t-shared-{tag}", 1, agent)
         outcome = await ctx.executor.run(
             SkillCall(skill="memory.recall", args={"query": "他喜欢什么"}), sctx=sctx
         )
@@ -95,7 +95,7 @@ async def test_shared_skill_available_to_two_agents():
 async def test_disabled_skill_cannot_be_called():
     ctx = await make_ctx()
     await ctx.skills.set_enabled("meme.reply", False)
-    sctx = ctx.skill_context("t-off", "u1", TOOLS_AGENT)
+    sctx = ctx.skill_context("t-off", 1, TOOLS_AGENT)
     outcome = await ctx.executor.run(SkillCall(skill="meme.reply", args={}), sctx=sctx)
     assert outcome.ok is False
     assert outcome.error_kind == "business"

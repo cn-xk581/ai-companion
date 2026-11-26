@@ -86,7 +86,7 @@ function switchMode() {
             <input
               v-model="username"
               class="field"
-              placeholder="3–32 位字母、数字或下划线"
+              placeholder="4–32 位字母、数字或下划线"
               autocomplete="username"
             />
           </label>

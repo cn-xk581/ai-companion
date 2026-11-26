@@ -92,7 +92,7 @@ class MemoryItemOut(BaseModel):
 
 
 class MemoryListResponse(BaseModel):
-    user_id: str
+    user_id: int
     memories: list[MemoryItemOut]
 
 

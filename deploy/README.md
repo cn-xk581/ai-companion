@@ -387,3 +387,30 @@ curl -sN -X POST https://chat.example.com/api/v1/chat/stream \
   -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
   -d '{"user_input":"在吗"}' | head -c 300
 ```
+---
+
+## 11. 用户体系升级（仅旧安装需要跑一次）
+
+新版本把 `users` 改成 **BIGINT 主键**，并新增 `user_auth`（refresh token）与 `user_profile`（资料）。
+旧库里 `users.id` 是 `VARCHAR(64)`，`sessions/turns/memories.user_id` 也是字符串，**必须先清空重建**（按约定，旧数据只是测试数据）。
+
+```bash
+# 0) 备份（强烈建议）
+docker exec companion-postgres-1 pg_dump -U companion companion > backup-$(date +%F).sql
+
+# 1) 清掉旧表（脚本见 deploy/migrations/001_reset_users.sql）
+docker exec -i companion-postgres-1 psql -U companion -d companion \
+  < deploy/migrations/001_reset_users.sql
+
+# 2) 重启：应用启动时会 create_all 建新表结构
+sudo systemctl restart companion
+
+# 3) 验证（应看到 users / user_auth / user_profile 三张新表）
+docker exec -i companion-postgres-1 psql -U companion -d companion -c '\dt'
+```
+
+升级后：
+
+- 旧 JWT 全部失效（`sub` 从字符串改成 BIGINT 字符串形式），所有人需要重新登录；
+- 密码哈希改为 **argon2id**；旧 PBKDF2 用户若还在，登录成功时会自动升级；
+- 头像写入 `MEDIA_DIR/avatars/{user_id}.webp`，通过 `/media/...` 提供，随安装目录一起清理。

@@ -249,5 +249,5 @@ def _hydrate(call: SkillCall, state: dict) -> SkillCall:
     """把编排上下文补进参数（用户身份等），模型不必也不能伪造这些字段。"""
     args = dict(call.args or {})
     if call.skill == "reminder.create":
-        args["user_id"] = state["user_id"]
+        args["user_id"] = str(state["user_id"])
     return SkillCall(skill=call.skill, args=args)

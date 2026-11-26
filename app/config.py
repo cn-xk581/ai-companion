@@ -112,7 +112,15 @@ class Settings(BaseSettings):
 
     jwt_secret: str = "dev-only-secret-change-me"
     jwt_algorithm: str = "HS256"
-    jwt_expire_minutes: int = 7 * 24 * 60
+    jwt_expire_minutes: int = 30  # 兼容旧字段；实际用 access_token_minutes
+    access_token_minutes: int = 30
+    refresh_token_days: int = 30
+
+    # ---- 用户资料 / 头像 ----
+    media_dir: str = "data/media"      # 静态资源根（挂 /media）
+    avatar_max_mb: int = 2
+    avatar_size: int = 512
+    avatar_quality: int = 85
 
     # ---- 运维接口 ----
     admin_token: str = ""  # 空 => 运维接口关闭（403），生产必须显式配置

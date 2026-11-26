@@ -2,25 +2,80 @@ import { readItem, writeItem, removeItem } from './storage'
 
 const API_BASE = '/api/v1'
 
+const ACCESS_KEY = 'companion_token'
+const REFRESH_KEY = 'companion_refresh'
+const USER_KEY = 'companion_user'
+const ADMIN_KEY = 'companion_admin_token'
+
 export function getToken() {
-  return readItem('companion_token') || ''
+  return readItem(ACCESS_KEY) || ''
 }
 export function setToken(token) {
-  writeItem('companion_token', token)
+  writeItem(ACCESS_KEY, token)
 }
 export function clearToken() {
-  removeItem('companion_token')
+  removeItem(ACCESS_KEY)
+}
+export function getRefreshToken() {
+  return readItem(REFRESH_KEY) || ''
+}
+export function setRefreshToken(token) {
+  writeItem(REFRESH_KEY, token)
+}
+export function clearRefreshToken() {
+  removeItem(REFRESH_KEY)
+}
+export function getStoredUser() {
+  try {
+    return JSON.parse(readItem(USER_KEY) || 'null')
+  } catch {
+    return null
+  }
+}
+export function setStoredUser(user) {
+  writeItem(USER_KEY, JSON.stringify(user || null))
+}
+export function clearStoredUser() {
+  removeItem(USER_KEY)
 }
 export function getAdminToken() {
-  return readItem('companion_admin_token') || ''
+  return readItem(ADMIN_KEY) || ''
 }
 export function setAdminToken(token) {
-  if (token) writeItem('companion_admin_token', token)
-  else removeItem('companion_admin_token')
+  if (token) writeItem(ADMIN_KEY, token)
+  else removeItem(ADMIN_KEY)
 }
 
-async function request(path, { method = 'GET', body, token = null, admin = false } = {}) {
-  const headers = { 'Content-Type': 'application/json' }
+let refreshing = null
+
+async function refreshTokens() {
+  const refresh = getRefreshToken()
+  if (!refresh) return false
+  if (refreshing) return refreshing
+  refreshing = (async () => {
+    try {
+      const res = await fetch(`${API_BASE}/auth/refresh`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ refresh_token: refresh }),
+      })
+      if (!res.ok) return false
+      const data = await res.json()
+      setToken(data.access_token)
+      setRefreshToken(data.refresh_token)
+      if (data.user) setStoredUser(data.user)
+      return true
+    } catch {
+      return false
+    } finally {
+      refreshing = null
+    }
+  })()
+  return refreshing
+}
+
+async function request(path, { method = 'GET', body, token = null, admin = false } = {}, retried = false) {
+  const headers = { 'Content-Type': 'application/json', 'X-Client-Platform': 'web' }
   const t = token === null ? getToken() : token
   if (t) headers.Authorization = `Bearer ${t}`
   if (admin) headers['X-Admin-Token'] = getAdminToken()
@@ -37,6 +92,12 @@ async function request(path, { method = 'GET', body, token = null, admin = false
     err.status = 0
     throw err
   }
+
+  // access token 过期：用 refresh 换一次再重试
+  if (res.status === 401 && !retried && token === null && path !== '/auth/refresh') {
+    if (await refreshTokens()) return request(path, { method, body, token, admin }, true)
+  }
+
   if (!res.ok) {
     let detail = res.statusText
     try {
@@ -54,10 +115,27 @@ async function request(path, { method = 'GET', body, token = null, admin = false
 }
 
 export const api = {
-  register: (username, password) =>
-    request('/auth/register', { method: 'POST', body: { username, password }, token: '' }),
-  login: (username, password) =>
-    request('/auth/login', { method: 'POST', body: { username, password }, token: '' }),
+  register: (username, password, nickname = '') =>
+    request('/auth/register', {
+      method: 'POST',
+      body: { username, password, nickname },
+      token: '',
+    }),
+  login: (username, password, deviceId = '') =>
+    request('/auth/login', {
+      method: 'POST',
+      body: { username, password, device_id: deviceId, platform: 'web' },
+      token: '',
+    }),
+  logout: (allDevices = false) =>
+    request('/auth/logout', {
+      method: 'POST',
+      body: { refresh_token: getRefreshToken(), all_devices: allDevices },
+    }),
+  me: () => request('/auth/me'),
+  updateMe: (nickname) => request('/users/me', { method: 'PUT', body: { nickname } }),
+  updateProfile: (profile) => request('/users/me/profile', { method: 'PUT', body: profile }),
+  deleteAvatar: () => request('/users/me/avatar', { method: 'DELETE' }),
 
   listSessions: () => request('/sessions'),
   createSession: (sessionId) =>
@@ -94,6 +172,35 @@ export const api = {
   health: () => request('/health'),
 }
 
+/** 上传头像（multipart，服务端转 webp） */
+export async function uploadAvatar(file) {
+  const form = new FormData()
+  form.append('file', file)
+  const res = await fetch(`${API_BASE}/users/me/avatar`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${getToken()}`,
+      'X-Client-Platform': 'web',
+    },
+    body: form,
+  })
+  if (!res.ok) {
+    let detail = res.statusText
+    try {
+      const j = await res.json()
+      detail = j.detail || detail
+    } catch {
+      /* ignore */
+    }
+    const err = new Error(detail || '上传失败')
+    err.status = res.status
+    throw err
+  }
+  const user = await res.json()
+  setStoredUser({ ...(getStoredUser() || {}), ...user })
+  return user
+}
+
 /** SSE 流式对话：返回 AbortController。事件：meta / token / done / error */
 export function streamChat({ sessionId, userInput, clientMsgId, onMeta, onToken, onDone, onError }) {
   const controller = new AbortController()
@@ -111,64 +218,75 @@ export function streamChat({ sessionId, userInput, clientMsgId, onMeta, onToken,
     }
   }
 
-  fetch(`${API_BASE}/chat/stream`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${getToken()}`,
-    },
-    body: JSON.stringify({ session_id: sessionId, user_input: userInput, client_msg_id: clientMsgId }),
-    signal: controller.signal,
-  })
-    .then(async (res) => {
-      if (!res.ok) {
-        let detail = res.statusText
-        try {
-          const j = await res.json()
-          detail = j.detail || detail
-        } catch {
-          /* ignore */
-        }
-        finishErr(new Error(detail))
-        return
-      }
-      if (!res.body) {
-        finishErr(new Error('当前浏览器不支持流式响应'))
-        return
-      }
-      const reader = res.body.getReader()
-      const decoder = new TextDecoder()
-      let buf = ''
-      for (;;) {
-        const { done, value } = await reader.read()
-        if (done) break
-        buf += decoder.decode(value, { stream: true })
-        let idx
-        while ((idx = buf.indexOf('\n\n')) !== -1) {
-          const frame = buf.slice(0, idx)
-          buf = buf.slice(idx + 2)
-          for (const line of frame.split('\n')) {
-            if (!line.startsWith('data: ')) continue
-            let msg
-            try {
-              msg = JSON.parse(line.slice(6))
-            } catch {
-              continue
-            }
-            if (msg.type === 'meta') onMeta?.(msg)
-            else if (msg.type === 'token') onToken?.(msg.content || '')
-            else if (msg.type === 'done') finishOk(msg)
-            else if (msg.type === 'error') finishErr(new Error(msg.message || '未知错误'))
-          }
-        }
-      }
-      if (!settled && !controller.signal.aborted) {
-        finishErr(new Error('连接提前关闭，请重试'))
-      }
-    })
-    .catch((e) => {
+  const send = async (isRetry = false) => {
+    let res
+    try {
+      res = await fetch(`${API_BASE}/chat/stream`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${getToken()}`,
+        },
+        body: JSON.stringify({
+          session_id: sessionId,
+          user_input: userInput,
+          client_msg_id: clientMsgId,
+        }),
+        signal: controller.signal,
+      })
+    } catch (e) {
       if (e.name !== 'AbortError') finishErr(e)
-    })
+      return
+    }
+    if (res.status === 401 && !isRetry) {
+      if (await refreshTokens()) return send(true)
+    }
+    if (!res.ok) {
+      let detail = res.statusText
+      try {
+        const j = await res.json()
+        detail = j.detail || detail
+      } catch {
+        /* ignore */
+      }
+      finishErr(new Error(detail))
+      return
+    }
+    if (!res.body) {
+      finishErr(new Error('当前浏览器不支持流式响应'))
+      return
+    }
+    const reader = res.body.getReader()
+    const decoder = new TextDecoder()
+    let buf = ''
+    for (;;) {
+      const { done, value } = await reader.read()
+      if (done) break
+      buf += decoder.decode(value, { stream: true })
+      let idx
+      while ((idx = buf.indexOf('\n\n')) !== -1) {
+        const frame = buf.slice(0, idx)
+        buf = buf.slice(idx + 2)
+        for (const line of frame.split('\n')) {
+          if (!line.startsWith('data: ')) continue
+          let msg
+          try {
+            msg = JSON.parse(line.slice(6))
+          } catch {
+            continue
+          }
+          if (msg.type === 'meta') onMeta?.(msg)
+          else if (msg.type === 'token') onToken?.(msg.content || '')
+          else if (msg.type === 'done') finishOk(msg)
+          else if (msg.type === 'error') finishErr(new Error(msg.message || '未知错误'))
+        }
+      }
+    }
+    if (!settled && !controller.signal.aborted) {
+      finishErr(new Error('连接提前关闭，请重试'))
+    }
+  }
 
+  send()
   return controller
 }

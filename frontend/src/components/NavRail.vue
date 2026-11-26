@@ -7,7 +7,7 @@ const props = defineProps({
 })
 const emit = defineEmits(['view', 'settings', 'user'])
 
-const initial = computed(() => (props.user?.username || '我').slice(0, 1).toUpperCase())
+const initial = computed(() => (props.user?.nickname || props.user?.username || '我').slice(0, 1).toUpperCase())
 </script>
 
 <template>

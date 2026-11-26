@@ -65,7 +65,7 @@ class MemoryRecallSkill(Skill):
             return RecallOutput(degraded=True)
         embeddings = await sctx.embedder.embed([payload.query], is_query=True)
         hits = await sctx.vector_store.search(
-            sctx.user_id, embeddings[0], top_k=payload.top_k, threshold=payload.min_score
+            str(sctx.user_id), embeddings[0], top_k=payload.top_k, threshold=payload.min_score
         )
         rows = [
             RecallHit(content=mem.content, score=round(float(score), 3), importance=mem.importance)
@@ -107,7 +107,7 @@ class MemoryRememberSkill(Skill):
                 tags=item.tags,
             )
             await sctx.repo.save_memory(sctx.user_id, memory)
-            await sctx.vector_store.upsert(sctx.user_id, memory, embedding)
+            await sctx.vector_store.upsert(str(sctx.user_id), memory, embedding)
             ids.append(memory.id)
         await sctx.tracer.decision("memory.remembered", saved=len(ids), skipped=skipped)
         return RememberOutput(saved=len(ids), skipped=skipped, ids=ids)

@@ -16,16 +16,16 @@ from app.storage.postgres import DuplicateUserError, InMemoryRepository
 def test_password_hash_roundtrip():
     h = hash_password("secret123")
     assert h != "secret123"
-    assert h.startswith("pbkdf2_sha256$")
+    assert h.startswith("$argon2id$")
     assert verify_password("secret123", h)
     assert not verify_password("wrong", h)
 
 
 def test_jwt_roundtrip():
     secret = "x" * 64
-    token = create_access_token("u1", "alice", secret)
+    token = create_access_token(1, "alice", secret)
     payload = decode_access_token(token, secret)
-    assert payload["sub"] == "u1"
+    assert payload["sub"] == "1"
     assert payload["username"] == "alice"
 
     with pytest.raises(pyjwt.PyJWTError):
@@ -55,16 +55,16 @@ async def test_session_ownership_isolation():
     graph = build_graph(ctx, InMemorySaver())
     service = ChatService(ctx, graph, {"backend": "memory"})
 
-    session = await service.create_session("s1", "u1")
-    await service.chat(session_id=session.session_id, user_id="u1", user_input="你好呀")
+    session = await service.create_session("s1", 1)
+    await service.chat(session_id=session.session_id, user_id=1, user_input="你好呀")
 
     with pytest.raises(SessionOwnershipError):
-        await service.require_session("s1", "u2")
+        await service.require_session("s1", 2)
     with pytest.raises(SessionOwnershipError):
-        await service.create_session("s1", "u2")
+        await service.create_session("s1", 2)
     with pytest.raises(SessionOwnershipError):
-        await service.list_memories("u2", session_id="s1")
+        await service.list_memories(2, session_id="s1")
 
     # 本人可正常访问
-    record = await service.require_session("s1", "u1")
-    assert record.user_id == "u1"
+    record = await service.require_session("s1", 1)
+    assert record.user_id == 1

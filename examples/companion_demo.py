@@ -95,12 +95,12 @@ async def main() -> None:
     async with open_checkpointer(settings) as checkpoint:
         graph = build_graph(ctx, checkpoint.saver)
         service = ChatService(ctx, graph, checkpoint.describe())
-        session = await service.create_session(None, "demo-user")
+        session = await service.create_session(None, 1)
         print(f"会话：{session.session_id}（人设：{session.persona.name}）\n")
 
         for text in ("今天加班到很晚，有点累", "你记得我喜欢喝什么吗"):
             payload = await service.chat(
-                session_id=session.session_id, user_id="demo-user", user_input=text
+                session_id=session.session_id, user_id=1, user_input=text
             )
             print(f"我：{text}")
             print(f"她：{payload['reply']}")
@@ -109,7 +109,7 @@ async def main() -> None:
                 f"情绪 {payload.get('mood_label')} · 状态 {payload['status']}]\n"
             )
 
-        trace = await service.trace(payload["turn_id"], "demo-user")
+        trace = await service.trace(payload["turn_id"], 1)
         print(f"审计事件 {trace['count']} 条，示例：")
         for event in trace["events"][:5]:
             print("  ", json.dumps(event, ensure_ascii=False)[:150])

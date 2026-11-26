@@ -38,7 +38,7 @@ from app.api.schemas import (
     TraceResponse,
     TurnResponse,
 )
-from app.auth.deps import AuthUser, get_current_user
+from app.auth.deps import AuthUser, ensure_can_chat, get_current_user
 from app.domain.companion import MOOD_LABELS, STAGE_LABELS, Persona
 from app.graph.builder import topology
 from app.graph.context import GraphContext
@@ -83,6 +83,7 @@ async def _rate_limit(ctx: GraphContext, user_id: str) -> None:
 async def chat(req: ChatRequest, request: Request, user: AuthUser = Depends(get_current_user)):
     """一轮对话（同步返回）。`client_msg_id` 相同则幂等返回上次结果。"""
     ctx, service = _deps(request)
+    ensure_can_chat(user)
     await _rate_limit(ctx, user.user_id)
     session_id = req.session_id or uuid.uuid4().hex
     try:
@@ -102,6 +103,7 @@ async def chat(req: ChatRequest, request: Request, user: AuthUser = Depends(get_
 async def chat_stream(req: ChatRequest, request: Request, user: AuthUser = Depends(get_current_user)):
     """SSE 流式：meta → token* → done/error。`done` 里带最终文本与最新关系/情绪。"""
     ctx, service = _deps(request)
+    ensure_can_chat(user)
     await _rate_limit(ctx, user.user_id)
     session_id = req.session_id or uuid.uuid4().hex
     try:

@@ -210,6 +210,14 @@ cd frontend && npm install && npm run dev     # http://127.0.0.1:5173（/api 代
 
 | 方法 | 路径 | 说明 |
 |---|---|---|
+| POST | `/api/v1/auth/register` | 注册（用户名 4–32 位、小写唯一；返回 access + refresh） |
+| POST | `/api/v1/auth/login` | 登录（argon2id；旧 PBKDF2 登录时自动升级） |
+| POST | `/api/v1/auth/refresh` | 刷新令牌（轮换，旧的立即作废） |
+| POST | `/api/v1/auth/logout` | 登出（撤销当前设备，可 `all_devices`） |
+| GET | `/api/v1/auth/me` | 当前用户 + 资料 |
+| PUT | `/api/v1/users/me` | 改昵称 |
+| PUT | `/api/v1/users/me/profile` | 改资料（性别/生日/bio/tags/traits/settings，仅本人） |
+| POST | `/api/v1/users/me/avatar` | 上传头像（jpg/png ≤2MB → 512×512 webp） |
 | POST | `/api/v1/chat` | 一轮对话（同步）；`client_msg_id` 幂等 |
 | POST | `/api/v1/chat/stream` | SSE：`meta` → `token*` → `done/error` |
 | GET/POST | `/api/v1/sessions` | 会话列表 / 创建会话 |

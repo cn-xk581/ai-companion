@@ -23,6 +23,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from app.api.routes import router, service_info
+from app.api.users import router as users_router
 from app.auth.routes import router as auth_router
 from app.config import Settings, get_settings
 from app.core.checkpointing import open_checkpointer
@@ -194,6 +195,7 @@ app.add_middleware(
 
 app.include_router(router)
 app.include_router(auth_router)
+app.include_router(users_router)
 
 # 前端构建产物（frontend/dist）：存在就直接托管，方便「单机单进程」部署；
 # 不存在时 GET / 返回接口索引（开发阶段常用 vite dev，不需要它）。
@@ -207,6 +209,14 @@ async def root():
         return FileResponse(index)
     return service_info(get_settings())
 
+
+# 用户头像等静态资源（/media/avatars/x.webp）
+_MEDIA_DIR = Path(get_settings().media_dir)
+try:
+    _MEDIA_DIR.mkdir(parents=True, exist_ok=True)
+    app.mount("/media", StaticFiles(directory=str(_MEDIA_DIR)), name="media")
+except OSError:
+    pass
 
 if (FRONTEND_DIST / "index.html").exists():
     # 只挂 /assets，避免占用 /api、/docs 等路由

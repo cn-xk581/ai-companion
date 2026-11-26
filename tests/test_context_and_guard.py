@@ -87,9 +87,9 @@ async def test_graph_drops_repeated_tool_calls():
     ctx = await make_ctx(llm, graph_repeat_limit=0)
     graph = build_graph(ctx, InMemorySaver())
     service = ChatService(ctx, graph, {"backend": "memory"})
-    session = await service.create_session(None, "u1")
+    session = await service.create_session(None, 1)
     payload = await service.chat(
-        session_id=session.session_id, user_id="u1", user_input="发个表情"
+        session_id=session.session_id, user_id=1, user_input="发个表情"
     )
     assert payload["status"] == "done"
     assert any("重复工具调用" in w for w in payload["warnings"])
