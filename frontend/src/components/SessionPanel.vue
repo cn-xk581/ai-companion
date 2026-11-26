@@ -78,6 +78,17 @@ async function savePersona() {
   }
 }
 
+async function editFact(fact) {
+  const next = prompt('修改这条记忆', fact.content)
+  if (next === null || !next.trim()) return
+  try {
+    await api.updateMemoryFact(fact.id, { value: next.trim() })
+    fact.content = next.trim()
+  } catch (e) {
+    msg.value = e.message || '保存失败'
+  }
+}
+
 async function toggleFact(fact) {
   try {
     await api.updateMemoryFact(fact.id, { pinned: !fact.pinned })
@@ -303,6 +314,7 @@ onMounted(load)
                 <p class="mem__meta">
                   <span>{{ f.category }}</span>
                   <span class="num">置信 {{ Math.round(f.confidence * 100) }}%</span>
+                  <button class="mem__del" @click="editFact(f)">修改</button>
                   <button class="mem__del" @click="toggleFact(f)">{{ f.pinned ? '取消置顶' : '置顶' }}</button>
                   <button class="mem__del" @click="deleteFact(f)">删掉</button>
                 </p>

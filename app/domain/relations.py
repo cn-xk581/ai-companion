@@ -86,6 +86,7 @@ class Episode:
     happened_at: datetime | None = None
     last_accessed_at: datetime | None = None
     access_count: int = 0
+    embedding: list[float] = field(default_factory=list)
     source_msg_id: int | None = None
     created_at: datetime | None = None
 

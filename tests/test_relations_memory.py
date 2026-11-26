@@ -156,3 +156,100 @@ def test_grouped_view_has_three_sections():
         assert data["facts"] and data["episodes"] and data["summary"] == "上次聊到神祠"
 
     asyncio.run(run())
+
+class _FakeEmbedder:
+    async def embed(self, texts, is_query=False):
+        return [[1.0, 0.0] if "加班" in t or is_query else [0.0, 1.0] for t in texts]
+
+
+def test_semantic_conflict_across_different_keys():
+    async def run():
+        repo = InMemoryRepository()
+        await _session(repo)
+        service, store = _service(repo)
+        relation = await service.relation_for_session(1, "s1")
+        await service.remember(
+            relation.id,
+            "s1",
+            facts=[{"category": "preference", "key": "food.spicy", "value": "爱吃辣"}],
+        )
+        # 不同 key、不同措辞，但语义冲突
+        await service.remember(
+            relation.id,
+            "s1",
+            facts=[{"category": "preference", "key": "health.stomach", "value": "胃不好，现在戒辣了"}],
+        )
+        active = await store.list_facts(relation.id)
+        assert len(active) == 1
+        assert "戒辣" in active[0].fact_value
+        assert "曾经" in active[0].fact_value
+        history = await store.list_facts(relation.id, include_history=True)
+        assert len(history) == 2
+
+    asyncio.run(run())
+
+
+def test_recall_respects_token_budget():
+    async def run():
+        repo = InMemoryRepository()
+        await _session(repo)
+        store = InMemoryRelationStore()
+        ctx = SimpleNamespace(
+            repo=repo,
+            settings=SimpleNamespace(memory_top_k=5, memory_budget_tokens=18, memory_facts_max=8),
+        )
+        service = MemoryService(ctx, store)
+        relation = await service.relation_for_session(1, "s1")
+        for i in range(5):
+            await store.add_fact(
+                relation_id=relation.id,
+                category="profile",
+                fact_key=f"k{i}",
+                fact_value=f"这是一条比较长的记忆内容{i}",
+            )
+        lines = await service.recall(relation.id, "s1", "你好")
+        assert sum(len(x) for x in lines) <= 18 + 1
+
+    asyncio.run(run())
+
+
+def test_recall_uses_vector_relevance():
+    async def run():
+        repo = InMemoryRepository()
+        await _session(repo)
+        store = InMemoryRelationStore()
+        ctx = SimpleNamespace(
+            repo=repo,
+            embedder=_FakeEmbedder(),
+            settings=SimpleNamespace(memory_top_k=5, memory_episodes_max=3),
+        )
+        service = MemoryService(ctx, store)
+        relation = await service.relation_for_session(1, "s1")
+        await store.add_episode(
+            relation_id=relation.id, session_id="s1", summary="无关的琐事", importance=5,
+            embedding=[0.0, 1.0],
+        )
+        await store.add_episode(
+            relation_id=relation.id, session_id="s1", summary="你加班到很晚", importance=5,
+            embedding=[1.0, 0.0],
+        )
+        lines = await service.recall(relation.id, "s1", "今天加班好累")
+        assert lines and "加班" in lines[0]
+
+    asyncio.run(run())
+
+
+def test_affinity_decay_per_day():
+    async def run():
+        repo = InMemoryRepository()
+        await _session(repo)
+        service, store = _service(repo)
+        relation = await service.relation_for_session(1, "s1")
+        old = datetime.now(timezone.utc) - timedelta(days=3)
+        await store.update_relation(relation.id, affinity_score=10, last_interaction_at=old)
+        for _ in range(3):
+            await service.affinity_decay(1)
+        refreshed = await store.get_relation(relation.id)
+        assert refreshed.affinity_score == 7
+
+    asyncio.run(run())

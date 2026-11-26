@@ -3,10 +3,11 @@ from __future__ import annotations
 
 import logging
 from abc import ABC, abstractmethod
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from sqlalchemy import (
+    JSON,
     BigInteger,
     Boolean,
     DateTime,
@@ -100,6 +101,7 @@ class EpisodeRow(Base):
     access_count: Mapped[int] = mapped_column(Integer, default=0)
     source_msg_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
     content_hash: Mapped[str] = mapped_column(String(32), default="")
+    embedding: Mapped[list] = mapped_column(JSON, default=list)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
 
 
@@ -170,6 +172,9 @@ class RelationStore(ABC):
 
     @abstractmethod
     async def clear_session_memories(self, session_id: str) -> int: ...
+
+    @abstractmethod
+    async def decay_affinity(self, per_day: int = 1) -> int: ...
 
     @abstractmethod
     async def clear_relation_memories(self, relation_id: int) -> int: ...
@@ -305,6 +310,7 @@ class InMemoryRelationStore(RelationStore):
             is_pinned=bool(fields.get("is_pinned", False)),
             happened_at=fields.get("happened_at") or ts,
             source_msg_id=fields.get("source_msg_id"),
+            embedding=list(fields.get("embedding") or []),
             created_at=ts,
         )
         self._episodes[episode.id] = episode
@@ -349,6 +355,15 @@ class InMemoryRelationStore(RelationStore):
     async def save_summary(self, summary: SessionSummary) -> None:
         summary.updated_at = now()
         self._summaries[summary.session_id] = summary
+
+    async def decay_affinity(self, per_day: int = 1) -> int:
+        cutoff = datetime.now(timezone.utc) - timedelta(days=1)
+        count = 0
+        for rel in self._relations.values():
+            if rel.affinity_score > 0 and rel.last_interaction_at and rel.last_interaction_at < cutoff:
+                rel.affinity_score = max(0, rel.affinity_score - per_day)
+                count += 1
+        return count
 
     async def clear_relation_memories(self, relation_id: int) -> int:
         count = 0
@@ -517,6 +532,7 @@ class PostgresRelationStore(RelationStore):
                 happened_at=fields.get("happened_at") or now(),
                 source_msg_id=fields.get("source_msg_id"),
                 content_hash=fields.get("content_hash") or content_hash(fields["summary"]),
+                embedding=list(fields.get("embedding") or []),
             )
             session.add(row)
             await session.commit()
@@ -595,6 +611,24 @@ class PostgresRelationStore(RelationStore):
             row.updated_at = now()
             await session.commit()
 
+    async def decay_affinity(self, per_day: int = 1) -> int:
+        cutoff = datetime.now(timezone.utc) - timedelta(days=1)
+        async with self._factory() as session:
+            result = await session.execute(
+                update(RelationRow)
+                .where(
+                    RelationRow.affinity_score > 0,
+                    RelationRow.last_interaction_at.is_not(None),
+                    RelationRow.last_interaction_at < cutoff,
+                )
+                .values(
+                    affinity_score=func.greatest(0, RelationRow.affinity_score - int(per_day)),
+                    updated_at=now(),
+                )
+            )
+            await session.commit()
+            return int(result.rowcount or 0)
+
     async def clear_relation_memories(self, relation_id: int) -> int:
         async with self._factory() as session:
             facts = await session.execute(
@@ -670,6 +704,7 @@ def _episode(row: EpisodeRow) -> Episode:
         happened_at=row.happened_at,
         last_accessed_at=row.last_accessed_at,
         access_count=int(row.access_count or 0),
+        embedding=list(row.embedding or []),
         source_msg_id=int(row.source_msg_id) if row.source_msg_id else None,
         created_at=row.created_at,
     )

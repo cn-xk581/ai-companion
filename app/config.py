@@ -129,6 +129,11 @@ class Settings(BaseSettings):
     card_max_json_mb: int = 2
     character_avatar_size: int = 256
     character_avatar_quality: int = 80
+    memory_judge_enabled: bool = True
+    memory_budget_tokens: int = 600
+    memory_facts_max: int = 8
+    memory_episodes_max: int = 3
+    affinity_decay_per_day: int = 1
     s3_endpoint: str = ""
     s3_bucket: str = ""
     s3_region: str = ""
