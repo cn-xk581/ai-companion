@@ -133,14 +133,6 @@ async function deleteEpisode(episode) {
   }
 }
 
-async function removeMemory(memory) {
-  try {
-    await api.deleteMemory(memory.id)
-    memories.value = memories.value.filter((m) => m.id !== memory.id)
-  } catch (e) {
-    msg.value = e.message || '删除失败'
-  }
-}
 
 async function toggleSkill(skill) {
   if (!getAdminToken()) {

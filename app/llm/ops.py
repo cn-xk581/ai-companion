@@ -161,7 +161,7 @@ async def stream_tokens(
     """
     import asyncio
 
-    from app.core.errors import AppError, classify
+    from app.core.errors import classify
     from app.core.errors import RETRYABLE_KINDS
 
     yielded = False

@@ -243,23 +243,20 @@ L3 会话记忆      session_summaries    这段对话的滚动摘要 + 未完�
 ```
 app/
 ├── main.py / config.py        # 装配与配置（护栏、重试、单飞、检查点、Trace 分组）
-├── api/                       # 对话/会话/人设/记忆/轮次/运维路由与契约
-├── services/chat_service.py   # 一轮对话的调度、SSE、复核恢复、归属校验
+├── api/                       # 对话/会话/角色卡/记忆/用户/轮次/运维路由
+├── services/                  # chat_service（对话调度）/ character_service（导入导出）/ memory_service（三层记忆）
 ├── graph/                     # state / builder / decision / 7 个节点
 ├── agents/                    # 4 个 Agent 白名单
 ├── skills/                    # 基类、注册中心、执行器、10 个业务 Skill
 ├── mcp/                       # 协议模型、客户端、适配器注册表、3 个适配器
 ├── core/                      # errors / retry / singleflight / tracing / loopguard / checkpointing / context_window
-├── domain/                    # 人设、关系、情绪、消息、记忆（纯数据）
-├── storage/                   # PG + 内存仓库（users/sessions/messages/memories/turns/events）
+├── domain/                    # 人设、关系、情绪、消息、记忆、角色卡解析（纯数据）
+├── storage/                   # PG + 内存仓库：users/characters/relations/sessions/messages/memory/summaries/turns/events
 └── llm/                       # 客户端、embedder、调用封装、提示词
-docs/
-├── ARCHITECTURE.md            # 分层、时序、可靠性机制、改动清单
-└── CHECKLIST.md               # 落地自测清单（55 用例对照 + 手工验收）
-deploy/                        # install / uninstall / status / selftest + 模板（见 deploy/README.md）
-frontend/                      # Vue 3 聊天界面（双主题、追踪抽屉、复核卡、人设/记忆设置）
+deploy/                        # install / uninstall / status / selftest / migrations（见 deploy/README.md）
+frontend/                      # Vue 3：三栏聊天、人物页（导入/搜索/卡片）、双主题、记忆面板、追踪抽屉
 examples/companion_demo.py     # 本地演示：两轮对话 + 审计摘要
-tests/                         # 55 个离线用例
+tests/                         # 95 个离线用例
 ```
 
 ---
@@ -271,7 +268,7 @@ tests/                         # 55 个离线用例
 python -m venv .venv
 .\.venv\Scripts\activate            # Windows；Linux/macOS: source .venv/bin/activate
 pip install -e ".[dev]"
-pytest -q                           # 55 passed
+pytest -q                           # 95 passed
 python -m examples.companion_demo --offline   # 不调模型跑两轮
 uvicorn app.main:app --reload       # http://127.0.0.1:8000/docs
 

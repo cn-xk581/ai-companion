@@ -22,7 +22,6 @@ from typing import Awaitable, Callable, TypeVar
 
 from app.core.errors import (
     RETRYABLE_KINDS,
-    AppError,
     ErrorKind,
     RateLimitedError,
     classify,

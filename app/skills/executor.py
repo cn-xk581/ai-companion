@@ -26,7 +26,6 @@ from app.core.errors import (
     AppError,
     BusinessRuleViolation,
     PermissionDenied,
-    ValidationFailed,
     classify,
     to_app_error,
 )

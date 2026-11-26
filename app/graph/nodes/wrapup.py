@@ -323,31 +323,4 @@ def _memory_items(data: dict, limit: int) -> tuple[list[dict], list[dict]]:
     return facts[:limit], episodes[:limit]
 
 
-def _legacy_memory_items(data: dict, limit: int) -> list[dict]:
-    """校验并裁剪抽取结果：字段不合法/过短/重复的丢弃。"""
-    raw = (data or {}).get("memories")
-    if not isinstance(raw, list):
-        return []
-    allowed = {"fact", "preference", "event", "anniversary", "story"}
-    items: list[dict] = []
-    seen: set[str] = set()
-    for item in raw[: max(1, limit)]:
-        if not isinstance(item, dict):
-            continue
-        content = str(item.get("content") or "").strip()
-        category = str(item.get("category") or "fact")
-        if len(content) < 3 or len(content) > 60 or content in seen:
-            continue
-        if category not in allowed:
-            category = "fact"
-        try:
-            importance = float(item.get("importance", 0.6))
-        except (TypeError, ValueError):
-            importance = 0.6
-        importance = max(0.3, min(1.0, importance))
-        seen.add(content)
-        items.append({"content": content, "importance": importance, "category": category})
-    return items
-
-
 __all__ = ["human_gate_node", "persist_node", "SAFE_REPLY", "STATUS_AWAITING_REVIEW"]

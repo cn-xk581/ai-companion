@@ -5,7 +5,6 @@ import hashlib
 import math
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from typing import Any
 
 # 事实状态
 FACT_PENDING = 0

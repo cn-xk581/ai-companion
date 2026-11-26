@@ -166,7 +166,6 @@ export const api = {
   syncSessionCharacter: (sessionId) =>
     request(`/sessions/${encodeURIComponent(sessionId)}/sync-character`, { method: 'POST' }),
 
-  listMemories: () => request('/memories'),
   getSessionMemory: (sessionId, q = '') =>
     request(`/sessions/${encodeURIComponent(sessionId)}/memory?q=${encodeURIComponent(q)}`),
   updateSessionRelation: (sessionId, body) =>

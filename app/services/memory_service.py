@@ -10,10 +10,8 @@ from typing import Any
 
 from app.domain.memory import MemoryItem
 from app.domain.relations import (
-    EP_ACTIVE,
     FACT_ACTIVE,
     FACT_PENDING,
-    Episode,
     Fact,
     content_hash,
     fact_key_norm,
@@ -532,7 +530,7 @@ class MemoryService:
             if not summary_text:
                 summary_text = f"{month} 的回忆：{text}"[:800]
             importance = max(e.importance for e in items)
-            memoir = await self.store.add_episode(
+            await self.store.add_episode(
                 relation_id=relation_id,
                 session_id="",
                 kind="memoir",

@@ -31,7 +31,6 @@ from app.domain.relations import (
     FACT_ACTIVE,
     FACT_ARCHIVED,
     FACT_PENDING,
-    FACT_SUPERSEDED,
     Episode,
     Fact,
     Relation,

@@ -12,7 +12,7 @@ from app.core.loopguard import GuardLimits, check_budget, new_guard, observe_sig
 from app.core.tracing import Tracer
 from app.domain.companion import STAGE_LABELS, Persona
 from app.graph.context import GraphContext
-from app.graph.decision import REPAIR_HINT, TurnPlan
+from app.graph.decision import TurnPlan
 from app.graph.state import STATUS_BLOCKED, STATUS_RUNNING
 from app.llm.ops import complete_json
 from app.llm.prompts import build_planner_messages

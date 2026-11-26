@@ -6,7 +6,6 @@ from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 
 from app.domain.companion import Persona
-from app.domain.relations import SessionSummary
 from app.services.memory_service import MemoryService
 from app.storage.postgres import InMemoryRepository, SessionRecord
 from app.storage.relation_store import InMemoryRelationStore

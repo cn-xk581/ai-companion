@@ -27,7 +27,6 @@ from sqlalchemy import (
     or_,
     select,
 )
-from sqlalchemy import Text as _SAText
 from sqlalchemy.ext.asyncio import AsyncEngine, async_sessionmaker
 from sqlalchemy.orm import Mapped, mapped_column
 
