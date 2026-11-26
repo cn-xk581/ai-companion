@@ -44,6 +44,8 @@ class GraphContext:
     singleflight: SingleFlight
 
     object_store: ObjectStore | None = None
+    relations: Any = None
+    memory: Any = None
     notifier: Callable[[str, str], None] | None = None
     _tracers: dict[str, Tracer] = field(default_factory=dict)
     checkpointer_desc: dict[str, Any] = field(default_factory=dict)

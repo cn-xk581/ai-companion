@@ -25,6 +25,7 @@ from fastapi.staticfiles import StaticFiles
 from app.api.routes import router, service_info
 from app.api.users import router as users_router
 from app.api.characters import router as characters_router
+from app.api.memory import router as memory_router
 from app.auth.routes import router as auth_router
 from app.config import Settings, get_settings
 from app.core.checkpointing import open_checkpointer
@@ -166,6 +167,13 @@ async def lifespan(app: FastAPI):
         app.state.character_service = CharacterService(
             ctx, app.state.characters, app.state.storage, app.state.chat
         )
+        from app.services.memory_service import MemoryService
+        from app.storage.relation_store import create_relation_store
+
+        app.state.relations = create_relation_store(repo)
+        app.state.memory = MemoryService(ctx, app.state.relations)
+        ctx.relations = app.state.relations
+        ctx.memory = app.state.memory
 
         logger.info(
             "%s started (env=%s, checkpoint=%s, skills=%d, mcp_tools=%d)",
@@ -207,6 +215,7 @@ app.include_router(router)
 app.include_router(auth_router)
 app.include_router(users_router)
 app.include_router(characters_router)
+app.include_router(memory_router)
 
 # 前端构建产物（frontend/dist）：存在就直接托管，方便「单机单进程」部署；
 # 不存在时 GET / 返回接口索引（开发阶段常用 vite dev，不需要它）。

@@ -98,15 +98,18 @@ async def intake_node(state: dict, ctx: GraphContext) -> dict:
 
     # ---- 长期记忆召回（失败不阻断） ----
     query = _recall_query(state["user_input"], state.get("stage") or "stranger", state.get("mood") or {})
-    recall = await ctx.executor.run(
-        SkillCall(skill="memory.recall", args={"query": query, "top_k": ctx.settings.memory_top_k}),
-        sctx=sctx,
-    )
-    updates["skill_calls"] += 1
-    updates["outcomes"].append(recall.model_dump())
-    updates["memories"] = list(recall.data.get("memories") or []) if recall.ok else []
-    if not recall.ok:
-        updates["warnings"].append("长期记忆召回失败，本轮不使用历史记忆")
+    updates["memories"] = []
+    if getattr(ctx, "memory", None) is not None:
+        try:
+            updates["memories"] = await ctx.memory.recall_for_session(
+                state["user_id"],
+                state["session_id"],
+                query,
+                limit=ctx.settings.memory_top_k + 4,
+            )
+        except Exception as exc:  # noqa: BLE001 - 记忆失败不阻断
+            logger.warning("[memory] 召回失败：%s", exc)
+            updates["warnings"].append("长期记忆召回失败，本轮不使用历史记忆")
 
     # ---- 预算闸门 ----
     guard, reason = check_budget(

@@ -145,12 +145,8 @@ async def persist_node(state: dict, ctx: GraphContext) -> dict:
             )
             llm_calls += 1
             items = _memory_items(extraction.data, ctx.settings.memory_extract_max)
-            if items:
-                remember = await ctx.executor.run(
-                    SkillCall(skill="memory.remember", args={"items": items}), sctx=sctx
-                )
-                skill_calls += 1
-                outcomes.append(remember.model_dump())
+            if items and getattr(ctx, "memory", None) is not None:
+                await ctx.memory.remember_from_items(state["user_id"], state["session_id"], items)
         except Exception as exc:  # noqa: BLE001 - 记忆失败不影响这轮对话
             logger.warning("[persist] 记忆抽取失败：%s", exc)
             warnings.append("这轮没能记住新的事（不影响回复）")

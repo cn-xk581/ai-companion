@@ -49,7 +49,7 @@ async def test_normal_turn_persists_reply_state_and_trace():
 
     # 长期记忆沉淀
     memories = await ctx.repo.list_memories(1)
-    assert any("加班" in m.content for m in memories)
+    assert memories == []  # 预设会话未绑定角色：记忆写入羁绊档案（见 test_relations_memory）
 
     # Trace：LLM + Skill 都有 span，且有决策日志
     events = await ctx.repo.list_events(payload["turn_id"])

@@ -226,6 +226,9 @@ cd frontend && npm install && npm run dev     # http://127.0.0.1:5173（/api 代
 | GET | `/api/v1/characters/{id}/export.png` | 导出 PNG 卡（内嵌 ccv3/chara） |
 | POST | `/api/v1/characters/{id}/sessions` | 用该角色当前版本开一段会话（锁定版本） |
 | POST | `/api/v1/sessions/{id}/sync-character` | 显式把会话同步到角色最新版本 |
+| GET | `/api/v1/sessions/{id}/memory` | 会话羁绊记忆（事实/情景/摘要 + 关系状态） |
+| PATCH/DELETE | `/api/v1/memory/facts/{id}` | 修改/置顶/归档一条事实 |
+| PATCH/DELETE | `/api/v1/memory/episodes/{id}` | 置顶/归档一条情景记忆 |
 | POST | `/api/v1/chat` | 一轮对话（同步）；`client_msg_id` 幂等 |
 | POST | `/api/v1/chat/stream` | SSE：`meta` → `token*` → `done/error` |
 | GET/POST | `/api/v1/sessions` | 会话列表 / 创建会话 |
