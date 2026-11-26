@@ -148,5 +148,5 @@ async def archive_episode(
     episode_id: int, request: Request, user: AuthUser = Depends(get_current_user)
 ):
     await _owned_episode(request, user, episode_id)
-    await request.app.state.relations.update_episode(episode_id, status=3)
+    await request.app.state.memory.archive_episode(episode_id)
     return {"ok": True}

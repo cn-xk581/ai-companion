@@ -101,6 +101,13 @@ async def intake_node(state: dict, ctx: GraphContext) -> dict:
     updates["memories"] = []
     if getattr(ctx, "memory", None) is not None:
         try:
+            updates["relation_context"] = await ctx.memory.relation_context(
+                state["user_id"], state["session_id"]
+            )
+        except Exception:  # noqa: BLE001
+            updates["relation_context"] = ""
+    if getattr(ctx, "memory", None) is not None:
+        try:
             updates["memories"] = await ctx.memory.recall_for_session(
                 state["user_id"],
                 state["session_id"],

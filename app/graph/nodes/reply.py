@@ -41,6 +41,7 @@ async def respond_node(state: dict, ctx: GraphContext) -> dict:
         mood=mood.get("current_mood", "neutral"),
         intensity=float(mood.get("mood_intensity", 0.5)),
         memories=list(state.get("memories") or []),
+        relation_context=state.get("relation_context") or "",
         safety_hint=(safety.get("reply_hint") or "") if safety.get("action") == "soft" else "",
         tool_context=state.get("tool_text") or "",
     )

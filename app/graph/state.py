@@ -35,6 +35,7 @@ class CompanionState(TypedDict, total=False):
 
     # ---- 上下文 ----
     memories: list[str]
+    relation_context: str
     history: list[dict[str, str]]
 
     # ---- 运行态 ----

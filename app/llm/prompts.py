@@ -43,6 +43,7 @@ def build_system_prompt(
     mood: str,
     intensity: float,
     memories: list[str],
+    relation_context: str = "",
     safety_hint: str = "",
     tool_context: str = "",
 ) -> str:
@@ -55,6 +56,8 @@ def build_system_prompt(
         f"此刻情绪：{MOOD_LABELS.get(mood, mood)}，强度 {intensity:.1f}",
         f"禁区：{boundaries}",
     ]
+    if relation_context:
+        blocks += ["", f"【你们的关系】{relation_context}"]
     if memories:
         blocks += ["", "你记得关于对方的事（自然时提起，不要背清单）：", *[f"- {m}" for m in memories]]
     if safety_hint:

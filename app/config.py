@@ -134,6 +134,7 @@ class Settings(BaseSettings):
     memory_facts_max: int = 8
     memory_episodes_max: int = 3
     affinity_decay_per_day: int = 1
+    memory_compress_llm: bool = True
     s3_endpoint: str = ""
     s3_bucket: str = ""
     s3_region: str = ""

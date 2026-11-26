@@ -119,10 +119,9 @@ class ChatService:
             relation = await memory.relation_for_session(user_id, session_id)
             if relation is not None:
                 if resolved == "session":
-                    await relations.clear_session_memories(session_id)
+                    await memory.clear_session_memory(relation.id, session_id)
                 elif resolved == "all":
-                    await relations.clear_relation_memories(relation.id)
-                    await relations.clear_session_memories(session_id)
+                    await memory.clear_relation_memory(relation.id)
         elif resolved == "all":
             memories = await self.ctx.repo.list_memories(user_id)
             for memory in memories:

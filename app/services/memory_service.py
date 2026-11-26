@@ -74,6 +74,47 @@ class MemoryService:
     async def relation_for_character(self, user_id: int, character_id: int):
         return await self.store.ensure_relation(user_id, character_id)
 
+    async def relation_context(self, user_id: int, session_id: str) -> str:
+        relation = await self.relation_for_session(user_id, session_id)
+        if relation is None:
+            return ""
+        bits = []
+        if relation.user_nickname:
+            bits.append(f"TA 叫你「{relation.user_nickname}」")
+        if relation.user_persona_override:
+            bits.append(f"你在这个角色面前的身份：{relation.user_persona_override}")
+        if relation.affinity_score:
+            bits.append(f"好感度 {relation.affinity_score}/100（{relation.relationship_stage}）")
+        return "；".join(bits)
+
+    async def _drop_vectors(self, relation_id: int, episode_ids: list[int]) -> None:
+        vector_store = getattr(self.ctx, "vector_store", None)
+        if vector_store is None:
+            return
+        for ep_id in episode_ids:
+            try:
+                await vector_store.delete(f"rel:{relation_id}:episodes", str(ep_id))
+            except Exception:  # noqa: BLE001
+                pass
+
+    async def archive_episode(self, episode_id: int) -> None:
+        episode = await self.store.get_episode(episode_id)
+        if episode is None:
+            return
+        await self.store.update_episode(episode_id, status=3)
+        await self._drop_vectors(episode.relation_id, [episode_id])
+
+    async def clear_session_memory(self, relation_id: int, session_id: str) -> int:
+        episodes = await self.store.list_episodes(relation_id, include_archived=True, limit=1000)
+        ids = [e.id for e in episodes if e.session_id == session_id and e.kind != "memoir"]
+        await self._drop_vectors(relation_id, ids)
+        return await self.store.clear_session_memories(session_id)
+
+    async def clear_relation_memory(self, relation_id: int) -> int:
+        episodes = await self.store.list_episodes(relation_id, include_archived=True, limit=1000)
+        await self._drop_vectors(relation_id, [e.id for e in episodes])
+        return await self.store.clear_relation_memories(relation_id)
+
     # ---------------- 召回 ----------------
 
     async def recall_for_session(
@@ -86,14 +127,6 @@ class MemoryService:
 
     async def recall(self, relation_id: int, session_id: str, query: str, limit: int = 12) -> list[str]:
         lines: list[str] = []
-        relation = await self.store.get_relation(relation_id)
-        if relation is not None and (relation.user_nickname or relation.user_persona_override):
-            bits = []
-            if relation.user_nickname:
-                bits.append(f"TA 叫你「{relation.user_nickname}」")
-            if relation.user_persona_override:
-                bits.append(f"你在这段关系里的身份：{relation.user_persona_override}")
-            lines.append("；".join(bits))
         summary = await self.store.get_summary(session_id)
         if summary and summary.summary:
             lines.append(f"上次聊到：{summary.summary[:240]}")
@@ -475,17 +508,41 @@ class MemoryService:
             if len(items) < 5:
                 continue
             text = "；".join(e.summary[:60] for e in items[:30])
+            summary_text = ""
+            llm = getattr(self.ctx, "llm", None)
+            if llm is not None and bool(getattr(self.ctx.settings, "memory_compress_llm", True)):
+                try:
+                    result = await llm.complete(
+                        [
+                            {
+                                "role": "system",
+                                "content": (
+                                    "把下面这些零散回忆合并成一段 200 字以内的第三人称回忆，"
+                                    "保留情绪和关键细节，不要编造。只输出正文。"
+                                ),
+                            },
+                            {"role": "user", "content": text[:3000]},
+                        ],
+                        temperature=0.3,
+                        max_tokens=300,
+                    )
+                    summary_text = (result.content or "").strip()
+                except Exception:  # noqa: BLE001
+                    summary_text = ""
+            if not summary_text:
+                summary_text = f"{month} 的回忆：{text}"[:800]
             importance = max(e.importance for e in items)
             memoir = await self.store.add_episode(
                 relation_id=relation_id,
                 session_id="",
                 kind="memoir",
-                summary=f"{month} 的回忆：{text}"[:800],
+                summary=summary_text[:800],
                 importance=min(10, importance),
                 happened_at=min(e.happened_at or datetime.now(timezone.utc) for e in items),
             )
             for ep in items:
                 await self.store.update_episode(ep.id, status=2)
+            await self._drop_vectors(relation_id, [e.id for e in items])
             merged += len(items)
         return merged
 

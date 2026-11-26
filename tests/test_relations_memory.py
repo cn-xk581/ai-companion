@@ -331,8 +331,83 @@ def test_relation_persona_is_in_recall():
         await store.update_relation(
             relation.id, user_nickname="小笨蛋", user_persona_override="我是你的青梅竹马"
         )
-        lines = await service.recall(relation.id, "s1", "你好")
-        assert any("小笨蛋" in line for line in lines)
-        assert any("青梅竹马" in line for line in lines)
+        context = await service.relation_context(1, "s1")
+        assert "小笨蛋" in context
+        assert "青梅竹马" in context
 
     asyncio.run(run())
+
+class _FakeLLM:
+    async def complete(self, messages, **kwargs):
+        return SimpleNamespace(content="合并回忆：一起淋雨、一起看星星")
+
+
+def test_compression_uses_llm_summary():
+    async def run():
+        repo = InMemoryRepository()
+        await _session(repo)
+        store = InMemoryRelationStore()
+        ctx = SimpleNamespace(
+            repo=repo,
+            llm=_FakeLLM(),
+            settings=SimpleNamespace(memory_compress_llm=True),
+        )
+        service = MemoryService(ctx, store)
+        relation = await service.relation_for_session(1, "s1")
+        for i in range(210):
+            await store.add_episode(
+                relation_id=relation.id, session_id="s1", kind="event",
+                summary=f"小事 {i}", importance=2,
+            )
+        await service.compress_episodes(relation.id, threshold=200)
+        active = await store.list_episodes(relation.id)
+        assert len(active) == 1
+        assert active[0].summary.startswith("合并回忆")
+
+    asyncio.run(run())
+
+
+def test_archiving_episode_removes_vector():
+    async def run():
+        from app.memory.vector_store import InMemoryVectorStore
+
+        repo = InMemoryRepository()
+        await _session(repo)
+        store = InMemoryRelationStore()
+        vector_store = InMemoryVectorStore()
+        ctx = SimpleNamespace(
+            repo=repo,
+            embedder=_FakeEmbedder(),
+            vector_store=vector_store,
+            settings=SimpleNamespace(memory_judge_enabled=False),
+        )
+        service = MemoryService(ctx, store)
+        relation = await service.relation_for_session(1, "s1")
+        await service.remember(
+            relation.id,
+            "s1",
+            episodes=[{"kind": "event", "summary": "一起淋雨", "importance": 5}],
+        )
+        episodes = await store.list_episodes(relation.id)
+        namespace = f"rel:{relation.id}:episodes"
+        assert await vector_store.list_all(namespace)
+        await service.archive_episode(episodes[0].id)
+        assert await vector_store.list_all(namespace) == []
+
+    asyncio.run(run())
+
+
+def test_relation_context_goes_to_system_prompt():
+    from app.domain.companion import Persona
+    from app.llm.prompts import build_system_prompt
+
+    prompt = build_system_prompt(
+        persona=Persona(name="夷光"),
+        stage="friend",
+        mood="neutral",
+        intensity=0.4,
+        memories=[],
+        relation_context="TA 叫你「小笨蛋」；你在这个角色面前的身份：青梅竹马",
+    )
+    assert "小笨蛋" in prompt
+    assert "青梅竹马" in prompt
