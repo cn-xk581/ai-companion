@@ -111,10 +111,12 @@ class ChatService:
         # keep：只清对话；session：清对话 + 这段会话的情景/摘要；all：连羁绊档案一起清
         resolved = mode or ("session" if clear_memories else "keep")
         await self.ctx.repo.clear_messages(session_id)
-        record.stage = RelationshipStage.STRANGER
-        record.score = 0.0
-        record.mood = MoodState()
-        await self.ctx.repo.save_session(record)
+        # 只有「彻底重置」才清关系进度；清空对话不动好感/阶段/情绪
+        if resolved == "all":
+            record.stage = RelationshipStage.STRANGER
+            record.score = 0.0
+            record.mood = MoodState()
+            await self.ctx.repo.save_session(record)
         await self.ctx.cache.delete(f"session:{session_id}:snapshot")
 
         memory = getattr(self.ctx, "memory", None)

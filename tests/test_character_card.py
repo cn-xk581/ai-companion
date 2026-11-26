@@ -321,3 +321,34 @@ def test_create_session_with_greeting_writes_first_message():
         history = client.get(f"/api/v1/sessions/{sid}/history", headers=headers).json()["messages"]
         assert history and history[0]["role"] == "assistant"
         assert "你来啦" in history[0]["content"]
+
+def test_clearing_conversation_keeps_affinity_but_full_reset_clears_it():
+    with _client() as client:
+        body = _register(client)
+        headers = _headers(body["access_token"])
+        sid = client.post("/api/v1/sessions", json={}, headers=headers).json()["session_id"]
+
+        import asyncio
+
+        repo = app.state.ctx.repo
+
+        async def seed():
+            record = await repo.get_session(sid)
+            record.score = 42.0
+            await repo.save_session(record)
+
+        asyncio.run(seed())
+
+        cleared = client.post(
+            f"/api/v1/sessions/{sid}/reset", json={"mode": "session"}, headers=headers
+        )
+        assert cleared.status_code == 200
+        kept = client.get(f"/api/v1/sessions/{sid}", headers=headers).json()
+        assert kept["score"] == 42.0, "清空对话不应重置好感"
+
+        cleared = client.post(
+            f"/api/v1/sessions/{sid}/reset", json={"mode": "all"}, headers=headers
+        )
+        assert cleared.status_code == 200
+        reset = client.get(f"/api/v1/sessions/{sid}", headers=headers).json()
+        assert reset["score"] == 0.0
