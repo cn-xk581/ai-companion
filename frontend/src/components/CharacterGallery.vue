@@ -227,22 +227,31 @@ onMounted(load)
       <span class="section-count num">{{ PRESETS.length }}</span>
     </h2>
     <p class="hint hint--small">先用这些人设试试；点开就是一段新会话。</p>
-    <div class="grid grid--preset">
-      <button
-        v-for="p in PRESETS"
-        :key="p.id"
-        class="preset"
-        :disabled="!!creating"
-        @click="emit('start-preset', p)"
-      >
-        <span class="preset__portrait" :style="{ background: p.tint }">
-          <span class="preset__initial serif">{{ p.name.slice(0, 1) }}</span>
+    <div class="grid">
+      <article v-for="p in PRESETS" :key="p.id" class="card">
+        <span class="card__portrait card__portrait--blank">
+          <span class="card__initial card__initial--blank serif">{{ p.name.slice(0, 1) }}</span>
+          <span class="card__tags">
+            <span class="card__tag">预设</span>
+          </span>
         </span>
-        <span class="preset__text">
-          <span class="preset__name serif">{{ p.name }}</span>
-          <span class="preset__tagline">{{ p.tagline }}</span>
-        </span>
-      </button>
+        <div class="card__body">
+          <div class="card__top">
+            <span class="card__name serif" :title="p.name">{{ p.name }}</span>
+            <span class="card__meta">示例</span>
+          </div>
+          <p class="card__summary">{{ p.tagline }}</p>
+          <div class="card__actions">
+            <button
+              class="mini mini--primary"
+              :disabled="!!creating"
+              @click="emit('start-preset', p)"
+            >
+              {{ creating === p.id ? '开启中…' : '开始聊天' }}
+            </button>
+          </div>
+        </div>
+      </article>
     </div>
       </template>
 
@@ -350,10 +359,17 @@ onMounted(load)
   background: var(--bg-deep);
 }
 .card__portrait img { width: 100%; height: 100%; object-fit: cover; }
+.card__portrait--blank {
+  background: #0c0c0c;
+}
 .card__initial {
   font-size: 44px;
   color: var(--paper-ink);
   opacity: 0.9;
+}
+.card__initial--blank {
+  color: rgba(255, 255, 255, 0.28);
+  opacity: 1;
 }
 .card__tags {
   position: absolute;
