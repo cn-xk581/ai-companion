@@ -113,6 +113,9 @@ async def persist_node(state: dict, ctx: GraphContext) -> dict:
                     "sentiment": sentiment,
                     "safety_action": safety.get("action") or "allow",
                     "used_tool": bool(state.get("calls")),
+                    "repeat_count": _repeat_count(
+                        state.get("history") or [], state["user_input"]
+                    ),
                 },
             },
         ),
@@ -248,6 +251,19 @@ async def persist_node(state: dict, ctx: GraphContext) -> dict:
         "llm_calls": llm_calls,
         "outcomes": outcomes,
     }
+
+
+def _norm_text(text: str) -> str:
+    return "".join(ch for ch in (text or "").strip().lower() if ch.isalnum())
+
+
+def _repeat_count(history: list[dict], current: str) -> int:
+    """最近 10 条用户消息里，与当前输入完全相同（忽略空白/标点）的次数。"""
+    target = _norm_text(current)
+    if not target:
+        return 0
+    recent = [m for m in history if m.get("role") == "user"][-10:]
+    return sum(1 for m in recent if _norm_text(str(m.get("content") or "")) == target)
 
 
 def _memory_items(data: dict, limit: int) -> tuple[list[dict], list[dict]]:

@@ -30,6 +30,7 @@ class Signals(BaseModel):
     safety_action: Literal["allow", "soft", "block", "review"] = "allow"
     used_tool: bool = False
     intimacy_level: int = Field(default=0, ge=0, le=4)
+    repeat_count: int = 0  # 最近重复同一句话的次数（防刷）
 
 
 class RelationshipInput(BaseModel):
@@ -100,6 +101,12 @@ class RelationshipUpdateSkill(Skill):
         elif signals.safety_action == "review":
             delta -= 0.3
             reasons.append("内容需人工复核 -0.3")
+
+        # 防刷：重复发同一句话不涨，连续重复还要扣
+        if signals.repeat_count > 0:
+            penalty = min(1.5, 0.4 * signals.repeat_count)
+            delta = min(delta, 0.0) - penalty
+            reasons.append(f"重复发送同一句话 ×{signals.repeat_count}，-{penalty:.1f}")
 
         delta = max(TURN_DELTA_MIN, min(TURN_DELTA_MAX, delta))
         new_score = max(0.0, min(100.0, payload.score + delta))

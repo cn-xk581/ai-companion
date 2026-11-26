@@ -411,3 +411,38 @@ def test_relation_context_goes_to_system_prompt():
     )
     assert "小笨蛋" in prompt
     assert "青梅竹马" in prompt
+
+def test_repeated_message_does_not_increase_affinity():
+    import asyncio
+    from types import SimpleNamespace
+
+    from app.skills.builtin.relationship import (
+        RelationshipInput,
+        RelationshipUpdateSkill,
+        Signals,
+    )
+
+    class _Tracer:
+        async def decision(self, *args, **kwargs):
+            return None
+
+    async def run():
+        skill = RelationshipUpdateSkill()
+        ctx = SimpleNamespace(tracer=_Tracer())
+        normal = await skill.run(
+            RelationshipInput(score=20.0, stage="friend", signals=Signals(sentiment="positive")),
+            ctx,
+        )
+        repeated = await skill.run(
+            RelationshipInput(
+                score=20.0,
+                stage="friend",
+                signals=Signals(sentiment="positive", repeat_count=2),
+            ),
+            ctx,
+        )
+        assert normal.score > 20.0
+        assert repeated.score < 20.0
+        assert repeated.delta < 0
+
+    asyncio.run(run())
